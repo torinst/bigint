@@ -1,0 +1,92 @@
+/**
+ * @file bigint
+ * @brief A single-header C++ BigInteger implementation.
+ * 
+ * Copyright (c) 2025, torelis.  All rights reserved.
+ *
+ * This file defines a BigInteger class that supports arbitrary-precision
+ * integer arithmetic and comparison operations, exceeding the limits of
+ * built-in integer types.
+ *
+ * Arbitrary-precision integer representation.
+ * Basic arithmetic operations: addition, subtraction, multiplication
+ * and division.
+ * Comparison operators (==, !=, <, <=, >, >=).
+ * Policy-based design for base/radix and storage (extensible).
+ * Header-only, no external dependencies.
+ */
+
+#pragma once
+
+#include <bits/stdint-uintn.h>
+
+namespace torelis
+{
+/**
+ * @brief Base Policy for BigInteger.
+ *
+ * The Base Policy defines how digits of a BigInteger are represented
+ * and managed internally. In other words, it specifies the numeric base
+ * (radix) and related operations used for storing and manipulating
+ * large integers.
+ * 
+ * To add a new base policy, implement the required interfaces
+ * (digit type, base constant, helper functions).
+ * Plug it into BigInteger via templates.
+ */
+// block-wise storage with base (10 ^ 9)
+struct Base10e9
+{
+};
+
+// block-wise storage with base (2 ^ 32)
+struct Base2e32
+{
+};
+
+/**
+ * @brief Storage Policy for BigInteger.
+ *
+ * The Storage Policy defines how the sequence of digits (blocks)
+ * of a BigInteger is stored in memory. It abstracts away the underlying
+ * container and memory management, allowing flexibility in performance,
+ * memory usage, and custom allocation strategies.
+ *
+ * Separates the storage mechanism from arithmetic logic.
+ * Allows swapping different containers (e.g., std::vector, std::deque,
+ * custom allocator).
+ * Supports dynamic resizing, insertion, and removal of digit blocks.
+ */
+template <typename T>
+struct VectorStorage
+{
+};
+
+/**
+ * @brief Arbitrary-precision integer class using policy-based design.
+ *
+ * @tparam StoragePolicy  Defines how the sequence of digit blocks is
+ * stored in memory.
+ * eg., dynamic array(std::vector), fixed-size array, or custom allocator.
+ * @tparam BasePolicy  Defines the numeric base (radix) and digit
+ * representation.
+ * eg., Base10e9 (blocks of 10^9), Base2^32 (binary blocks).
+ *
+ * @details
+ * The BigInteger class provides arithmetic and comparison operations for
+ * integers beyond the limits of built-in types. It separates the storage
+ * mechanism and digit representation from arithmetic logic using policies,
+ * making it modular and adaptable.
+ */
+template <class StoragePolicy, class BasePolicy>
+class BigInteger
+{
+};
+
+// The storage policy defaults to VectorStorage<uint32_t>,
+// and the base policy defaults to Base10e9.
+using bigint_t = BigInteger<VectorStorage<uint32_t>, Base10e9>;
+
+} // namespace torelis
+
+using bigint = torelis::bigint_t;
