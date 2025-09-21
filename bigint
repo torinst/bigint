@@ -29,6 +29,8 @@
 
 #include <bits/stdint-uintn.h>
 #include <vector>
+#include <sstream>  // stringstream
+#include <iomanip>  // setw(), setfill()
 
 namespace torelis
 {
@@ -101,14 +103,245 @@ struct Storage
  * integers beyond the limits of built-in types. It separates the storage
  * mechanism and digit representation from arithmetic logic using policies,
  * making it modular and adaptable.
+ * 
+ * @note When providing StoragePolicy and BasePolicy, please
+ * ensure that for any number x, with BASE = BasePolicy::RADIX
+ * and TYPE = StoragePolicy::value_type, it holds that
+ * (x % BASE) <= std::numeric_limits<TYPE>::max().
  */
 template <class StoragePolicy, class BasePolicy>
 class BigInteger
 {
+private:
+    using base_type = typename BasePolicy::base_type;
+    using value_type = typename StoragePolicy::value_type;
+    using size_type = typename StoragePolicy::size_type;
+    using wide_type = int64_t;
+    using uwide_type = uint64_t;
+    static constexpr base_type BASE = BasePolicy::RADIX;
+    static constexpr unsigned SIZE = BasePolicy::DIGITS_PER_BLOCK;
+
+    using self_type = BigInteger<StoragePolicy, BasePolicy>;
+    using self_reference = self_type&;
+    using const_self_reference = const self_type&;
+
 public:
-    using uint = typename BasePolicy::uint;
 
 private:
+    void M_trim() noexcept
+    {
+        while (!M_storage.empty() && M_storage.back() == 0)
+            M_storage.pop_back();
+        if (M_storage.empty()) // zero is positive
+            M_positive = true;
+    }
+
+    void M_reset() noexcept
+    {
+        M_storage.clear();
+        M_positive = true;
+    }
+
+    self_reference M_from_string(const std::string& str)
+    {
+        M_reset();
+        size_t pos{0}, n = str.size();
+        for (; pos < n && isspace((unsigned char)str[pos]); ++pos);
+        if (pos < n && (str[pos] == '+' || str[pos] == '-'))
+        {
+            M_positive = (str[pos] == '+');
+            ++pos;
+        }
+        for (ptrdiff_t i{static_cast<ptrdiff_t>(n) - 1};
+             i >= static_cast<ptrdiff_t>(pos);
+             i -= static_cast<ptrdiff_t>(SIZE))
+        {
+            value_type x = 0;
+            // size_t l = std::max(pos, i - SIZE + 1);
+            ptrdiff_t l = std::max((ptrdiff_t)pos, i - (ptrdiff_t)SIZE + 1);
+            for (ptrdiff_t j = l; j <= i; ++j)
+            {
+                if (!isdigit((unsigned char)str[j]))
+                {
+                    throw std::invalid_argument("Invalid digit");
+                }
+                x = x * 10 + (str[j] - '0');
+            }
+            M_storage.push_back(x);
+        }
+        M_trim();
+        return *this;
+    }
+
+    int M_compare_abs(const_self_reference other) const
+    {
+        if (M_storage.size() != other.M_storage.size())
+            return (M_storage.size() < other.M_storage.size() ? -1 : 1);
+        for (size_type i = M_storage.size() - 1; i >= 0; --i)
+        {
+            if (M_storage[i] != other.M_storage[i])
+                return (M_storage[i] < other.M_storage[i] ? -1 : 1);
+        }
+        return 0;
+    }
+
+    void M_add_abs(const_self_reference other)
+    {
+        uwide_type carry{0};
+        size_type n = std::max(M_storage.size(), other.M_storage.size());
+        if (M_storage.size() < n)
+            M_storage.resize(n, 0);
+        for (size_type i{0}; i < n; ++i)
+        {
+            uwide_type sum = carry + M_storage[i]
+                + (i < other.M_storage.size() ? other.M_storage[i] : 0);
+            M_storage[i] = static_cast<value_type>(sum % BASE);
+            carry = sum / BASE;
+        }
+        if (carry)
+            M_storage.push_back(static_cast<value_type>(carry));
+    }
+
+    void M_subtract_abs(const_self_reference other)
+    {
+        wide_type carry{0};
+        for (size_type i{0}; i < other.M_storage.size() || carry; ++i)
+        {
+            wide_type curr = (wide_type)M_storage[i]
+                - (i < other.M_storage.size() ? other.M_storage[i] : 0)
+                - carry;
+            if (curr < 0)
+            {
+                curr += BASE;
+                carry = 1;
+            }
+            else
+                carry = 0;
+            M_storage[i] = static_cast<value_type>(curr);
+        }
+        M_trim();
+    }
+
+    static self_type
+    S_multiply_abs(const_self_reference lhs, const_self_reference rhs)
+    {
+        if (lhs.M_zero() || rhs.M_zero())
+            return self_type(0);
+        self_type ret{};
+        ret.M_storage.assign(lhs.M_storage.size() + rhs.M_storage.size(), 0);
+        for (size_type i{0}; i < lhs.M_storage.size(); ++i)
+        {
+            uwide_type carry{0};
+            uwide_type xi = static_cast<uwide_type>(lhs.M_storage[i]);
+            for (size_type j{0}; j < rhs.M_storage.size() || carry; ++j)
+            {
+                uwide_type curr = carry + ret.M_storage[i + j]
+                    + xi * (j < rhs.M_storage.size()
+                    ? uwide_type(rhs.M_storage[j]) : 0);
+                ret.M_storage[i + j] = static_cast<value_type>(curr % BASE);
+                carry = curr / BASE;
+            }
+        }
+        ret.M_trim();
+        return ret;
+    }
+
+    static std::pair<self_type, self_type>
+    S_divmod(const_self_reference dividend, const_self_reference divisor)
+    {
+        if (divisor.M_zero())
+            throw std::runtime_error("Division by zero");
+        self_type a = dividend.abs();
+        self_type b = divisor.abs();
+        if (a.M_compare_abs(b) < 0)
+        {
+            return {self_type(0), dividend};
+        }
+        size_t n = a.M_storage.size();
+        size_t m = b.M_storage.size();
+        // normalize
+        uwide_type norm = uwide_type(BASE) / (b.M_storage.back() + 1);
+        self_type an = a * self_type((wide_type)norm);
+        self_type bn = b * self_type((wide_type)norm);
+        an.M_storage.resize(n + 1, 0);
+
+        self_type q{};
+        q.M_storage.assign(n - m + 1, 0);
+
+        for (size_type i{n - m}; i >= 0; --i)
+        {
+            uwide_type ai_m = uwide_type(an.M_storage[i + m]) * BASE
+                            + uwide_type(an.M_storage[i + m - 1]);
+            uwide_type qt = ai_m / uwide_type(bn.M_storage[m - 1]);
+            if (qt >= BASE)
+                qt = BASE - 1;
+
+            // multiply bn by qt and subtract from an shifted at i
+            uwide_type carry = 0, borrow = 0;
+            for (size_t j = 0; j < m || carry; ++j)
+            {
+                uwide_type prod = qt * (j < m
+                            ? uwide_type(bn.M_storage[j]) : 0) + carry;
+                carry = prod / BASE;
+                uwide_type sub = uwide_type(an.M_storage[i + j])
+                                    - (prod % BASE) - borrow;
+                if (wide_type(sub) < 0)
+                {
+                    sub += BASE;
+                    borrow = 1;
+                }
+                else
+                    borrow = 0;
+                an.M_storage[i + j] = uint32_t(sub);
+            }
+            if (borrow)
+            {
+                // qt was too big; decrement qt and add bn back
+                qt--;
+                uwide_type carry2 = 0;
+                for (size_t j = 0; j < m || carry2; ++j)
+                {
+                    uwide_type sum = uwide_type(an.M_storage[i + j])
+                        + (j < m ? uwide_type(bn.M_storage[j]) : 0) + carry2;
+                    an.M_storage[i + j] = uint32_t(sum % BASE);
+                    carry2 = sum / BASE;
+                }
+            }
+            q.M_storage[i] = uint32_t(qt);
+        }
+        q.M_trim();
+        // remainder: an / norm
+        self_type r{};
+        r.M_storage.assign(an.M_storage.begin(), an.M_storage.begin() + m);
+        // convert remainder back by dividing by norm
+        // uwide_type carry = 0;
+        r.M_storage.resize(an.M_storage.size()); // ensure enough size
+        r.M_storage.assign(an.M_storage.begin(), an.M_storage.begin() + m);
+        uwide_type remcarry = 0;
+        for (int i = int(r.M_storage.size()) - 1; i >= 0; --i)
+        {
+            uwide_type cur = r.M_storage[i] + remcarry * BASE;
+            r.M_storage[i] = uint32_t(cur / norm);
+            remcarry = cur % norm;
+        }
+        r.M_trim();
+
+        // fix signs
+        q.M_positive = dividend.M_positive ^ divisor.M_positive;
+        if (q.M_zero())
+            q.M_positive = true;
+        r.M_positive = dividend.M_positive;
+        if (r.M_zero())
+            r.M_positive = true;
+
+        return std::make_pair(q, r);
+    }
+
+    bool M_zero() const
+    {
+        return M_storage.empty();
+    }
+
     StoragePolicy M_storage{};
     bool M_positive{true};
 };
