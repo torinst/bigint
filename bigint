@@ -45,19 +45,19 @@ namespace torelis
  * Plug it into BigInteger via templates.
  */
 // block-wise storage with base (10 ^ 9)
-struct Base10e9
+struct Base10e9 // RADIX = 10 ^ DIGITS_PER_BLOCK
 {
-    using uint = uint32_t;
-    static constexpr uint BASE = 1000000000;
-    static constexpr int WIDTH = 9;
+    using base_type = uint32_t;
+    static constexpr base_type RADIX = 1000000000U;
+    static constexpr int DIGITS_PER_BLOCK = 9;
 };
 
 // block-wise storage with base (2 ^ 32)
-struct Base2e32
+struct Base2e32 // RADIX = 2 ^ DIGITS_PER_BLOCK
 {
-    using uint = uint64_t;
-    static constexpr uint BASE = 0xffffffffULL + 1ULL;
-    static constexpr int WIDTH = 32;
+    using base_type = uint64_t;
+    static constexpr base_type RADIX = 0x100000000UL;
+    static constexpr int DIGITS_PER_BLOCK = 32;
 };
 
 /**
