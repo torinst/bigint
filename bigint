@@ -2,7 +2,7 @@
  * @file bigint
  * @brief A single-header C++ BigInteger implementation.
  * 
- * Copyright (c) 2025, torelis.  All rights reserved.
+ * Copyright (c) 2025, Torelis.  All rights reserved.
  *
  * This file defines a BigInteger class that supports arbitrary-precision
  * integer arithmetic and comparison operations, exceeding the limits of
