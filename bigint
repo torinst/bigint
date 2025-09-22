@@ -128,6 +128,14 @@ private:
 public:
 
 private:
+    /**
+     * @brief Removes unnecessary leading zeros from the BigInteger.
+     *
+     * After arithmetic operations (addition, subtraction, multiplication
+     * , etc.), the highest digits may become zero without affecting the
+     * actual value. This function trims those unnecessary leading zeros
+     * to maintain a normalized state.
+     */
     void M_trim() noexcept
     {
         while (!M_storage.empty() && M_storage.back() == 0)
@@ -136,12 +144,25 @@ private:
             M_positive = true;
     }
 
+    /**
+     * @brief Resets the BigInteger to zero.
+     *
+     * Clears all internal data and sets the value to 0.
+     */
     void M_reset() noexcept
     {
         M_storage.clear();
         M_positive = true;
     }
 
+    /**
+     * @brief Initializes the BigInteger from a string representation.
+     *
+     * Parses the input string and sets the BigInteger value accordingly.
+     *
+     * @param str The string containing the numeric value.
+     * @return Reference to the current BigInteger.
+     */
     self_reference M_from_string(const std::string& str)
     {
         M_reset();
@@ -173,6 +194,13 @@ private:
         return *this;
     }
 
+    /**
+     * @brief Compares the absolute value of this BigInteger with another.
+     *
+     * @param other The BigInteger to compare with.
+     * @return A positive value if |this| > |other|, zero if
+     * |this| == |other|, or a negative value if |this| < |other|.
+     */
     int M_compare_abs(const_self_reference other) const
     {
         if (M_storage.size() != other.M_storage.size())
@@ -185,6 +213,11 @@ private:
         return 0;
     }
 
+    /**
+     * @brief Adds another BigInteger's absolute value to this one.
+     *
+     * @param other The BigInteger whose absolute value will be added.
+     */
     void M_add_abs(const_self_reference other)
     {
         uwide_type carry{0};
@@ -202,6 +235,11 @@ private:
             M_storage.push_back(static_cast<value_type>(carry));
     }
 
+    /**
+     * @brief Subtracts another BigInteger's absolute value from this one.
+     *
+     * @param other The BigInteger whose absolute value will be subtracted.
+     */
     void M_subtract_abs(const_self_reference other)
     {
         wide_type carry{0};
@@ -222,6 +260,13 @@ private:
         M_trim();
     }
 
+    /**
+     * @brief Returns the product of the absolute values of two BigIntegers.
+     *
+     * @param lhs The first BigInteger.
+     * @param rhs The second BigInteger.
+     * @return A BigInteger representing |lhs| * |rhs|.
+     */
     static self_type
     S_multiply_abs(const_self_reference lhs, const_self_reference rhs)
     {
@@ -246,6 +291,13 @@ private:
         return ret;
     }
 
+    /**
+     * @brief Divides two BigIntegers and returns both quotient and remainder.
+     *
+     * @param dividend The number to be divided.
+     * @param divisor The number to divide by.
+     * @return A pair containing {quotient, remainder}.
+     */
     static std::pair<self_type, self_type>
     S_divmod(const_self_reference dividend, const_self_reference divisor)
     {
@@ -337,6 +389,11 @@ private:
         return std::make_pair(q, r);
     }
 
+    /**
+     * @brief Checks if the BigInteger is zero.
+     *
+     * @return true if the value is zero, false otherwise.
+     */
     bool M_zero() const
     {
         return M_storage.empty();
