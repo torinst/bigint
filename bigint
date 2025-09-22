@@ -126,6 +126,109 @@ private:
     using const_self_reference = const self_type&;
 
 public:
+    // constructors and destructor
+    BigInteger() // = default;
+    : M_storage()
+    , M_positive(true)
+    { }
+
+    BigInteger(int64_t integer)
+    {
+        *this = integer;
+    }
+
+    BigInteger(const std::string& str)
+    {
+        M_from_string(str);
+    }
+
+    ~BigInteger() = default;
+
+
+    // public functions accessible externally
+    /**
+     * @brief Converts to true if the BigInteger
+     * is non-zero, otherwise false.
+     */
+    explicit operator bool() const noexcept
+    {
+        return !M_zero();
+    }
+
+    /**
+     * @brief Assigns the BigInteger from a 64-bit integer.
+     * @param integer The 64-bit integer to assign from.
+     * @return Reference to this BigInteger after assignment.
+     */
+    self_reference operator=(int64_t integer)
+    {
+        M_reset();
+        if (integer < 0)
+        {
+            M_positive = false;
+            integer = -integer;
+        }
+        while (integer)
+        {
+            value_type x = static_cast<value_type>(integer % BASE);
+            M_storage.push_back(x);
+            integer /= BASE;
+        }
+        return *this;
+    }
+
+    /**
+     * @brief Returns the negation of this BigInteger.
+     * @return A new BigInteger with the opposite sign.
+     */
+    self_type operator-() const
+    {
+        self_type r = *this;
+        if (r.M_zero())
+            r.M_positive = !r.M_positive;
+        return r;
+    }
+
+    /**
+     * @brief Returns the absolute value of this BigInteger.
+     * @return A new BigInteger representing the absolute value.
+     */
+    self_type abs() const
+    {
+        self_type r = *this;
+        r.M_positive = true;
+        return r;
+    }
+
+    /**
+     * @brief Returns the sign of the BigInteger.
+     * @return 1 if positive, -1 if negative, 0 if zero.
+     */
+    int sign() const
+    {
+        if (M_zero())
+            return 0;
+        return (M_positive ? 1 : -1);
+    }
+
+    /**
+     * @brief Converts the BigInteger to its string representation.
+     * @return A string representing the value of the BigInteger.
+     */
+    std::string to_string() const
+    {
+        if (M_zero())
+            return "0";
+        std::stringstream ss{};
+        if (!M_positive)
+            ss << '-';
+        ss << (M_storage.empty() ? 0 : M_storage.back());
+        for (auto it = M_storage.rbegin() + 1; it != M_storage.rend(); ++it)
+        {
+            ss << std::setw(SIZE) << std::setfill('0') << (*it);
+        }
+        return ss.str();
+    }
 
 private:
     /**
@@ -196,7 +299,6 @@ private:
 
     /**
      * @brief Compares the absolute value of this BigInteger with another.
-     *
      * @param other The BigInteger to compare with.
      * @return A positive value if |this| > |other|, zero if
      * |this| == |other|, or a negative value if |this| < |other|.
@@ -215,7 +317,6 @@ private:
 
     /**
      * @brief Adds another BigInteger's absolute value to this one.
-     *
      * @param other The BigInteger whose absolute value will be added.
      */
     void M_add_abs(const_self_reference other)
@@ -237,7 +338,6 @@ private:
 
     /**
      * @brief Subtracts another BigInteger's absolute value from this one.
-     *
      * @param other The BigInteger whose absolute value will be subtracted.
      */
     void M_subtract_abs(const_self_reference other)
@@ -262,7 +362,6 @@ private:
 
     /**
      * @brief Returns the product of the absolute values of two BigIntegers.
-     *
      * @param lhs The first BigInteger.
      * @param rhs The second BigInteger.
      * @return A BigInteger representing |lhs| * |rhs|.
@@ -293,7 +392,6 @@ private:
 
     /**
      * @brief Divides two BigIntegers and returns both quotient and remainder.
-     *
      * @param dividend The number to be divided.
      * @param divisor The number to divide by.
      * @return A pair containing {quotient, remainder}.
@@ -391,7 +489,6 @@ private:
 
     /**
      * @brief Checks if the BigInteger is zero.
-     *
      * @return true if the value is zero, false otherwise.
      */
     bool M_zero() const
