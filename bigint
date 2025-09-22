@@ -126,7 +126,7 @@ private:
     using const_self_reference = const self_type&;
 
 public:
-    // constructors and destructor
+    // constructors
     BigInteger() // = default;
     : M_storage()
     , M_positive(true)
@@ -142,10 +142,172 @@ public:
         M_from_string(str);
     }
 
+    // destructor
     ~BigInteger() = default;
 
 
-    // public functions accessible externally
+    /* public functions accessible externally */
+    /// the four basic arithmetic operations
+    /// addition
+    /**
+     * @brief Returns the sum of two BigIntegers.
+     * @param lhs The left-hand side BigInteger.
+     * @param rhs The right-hand side BigInteger.
+     * @return A new BigInteger representing the sum.
+     */
+    friend self_type
+    operator+(const_self_reference lhs, const_self_reference rhs)
+    {
+        if (lhs.M_positive == rhs.M_positive)
+        {
+            self_type r = lhs;
+            r.M_add_abs(rhs);
+            return r;
+        }
+        int cmp = lhs.M_compare_abs(rhs);
+        if (cmp == 0)
+            return self_type(0);
+        if (cmp > 0)
+        {
+            self_type r = lhs;
+            r.M_subtract_abs(rhs);
+            return r;
+        }
+        self_type r = rhs;
+        r.M_subtract_abs(lhs);
+        r.M_positive = !r.M_positive;
+        return r;
+    }
+
+    /**
+     * @brief Adds another BigInteger to this one.
+     * @param integer The BigInteger to add.
+     * @return Reference to this BigInteger after addition.
+     */
+    self_reference operator+=(const_self_reference integer)
+    {
+        *this = *this + integer;
+        return *this;
+    }
+
+    /// subtraction
+    /**
+     * @brief Returns the difference between two BigIntegers.
+     * @param lhs The left-hand side BigInteger.
+     * @param rhs The right-hand side BigInteger.
+     * @return A new BigInteger representing the difference.
+     */
+    friend self_type
+    operator-(const_self_reference lhs, const_self_reference rhs)
+    {
+        if (lhs.M_positive != rhs.M_positive)
+        {
+            self_type r = lhs;
+            r.M_add_abs(rhs);
+            return r;
+        }
+        int cmp = lhs.M_compare_abs(rhs);
+        if (cmp == 0)
+            return static_cast<self_type>(0);
+        if (cmp > 0)
+        {
+            self_type r = lhs;
+            r.M_subtract_abs(rhs);
+            return r;
+        }
+        self_type r = rhs;
+        r.M_subtract_abs(lhs);
+        r.M_positive = !r.M_positive;
+        return r;
+    }
+
+    /**
+     * @brief Subtracts another BigInteger from this one.
+     * @param integer The BigInteger to subtract.
+     * @return Reference to this BigInteger after subtraction.
+     */
+    self_reference operator-=(const_self_reference integer)
+    {
+        *this = *this - integer;
+        return *this;
+    }
+
+    /// multiplication
+    /**
+     * @brief Returns the product of two BigIntegers.
+     * @param lhs The left-hand side BigInteger.
+     * @param rhs The right-hand side BigInteger.
+     * @return A new BigInteger representing the product.
+     */
+    friend self_type
+    operator*(const_self_reference lhs, const_self_reference rhs)
+    {
+        self_type r = S_multiply_abs(lhs, rhs);
+        r.M_positive = lhs.M_positive ^ rhs.M_positive;
+        if (r.M_zero())
+            r.M_positive = true;
+        return r;
+    }
+
+    /**
+     * @brief Multiplies this BigInteger by another.
+     * @param integer The BigInteger to multiply with.
+     * @return Reference to this BigInteger after multiplication.
+     */
+    self_reference operator*=(const_self_reference integer)
+    {
+        *this = *this * integer;
+        return *this;
+    }
+
+    /// division
+    /**
+     * @brief Returns the quotient of two BigIntegers.
+     * @param lhs The dividend BigInteger.
+     * @param rhs The divisor BigInteger.
+     * @return A new BigInteger representing the quotient.
+     */
+    friend self_type
+    operator/(const_self_reference lhs, const_self_reference rhs)
+    {
+        return S_divmod(lhs, rhs).frist;
+    }
+
+    /**
+     * @brief Divides this BigInteger by another.
+     * @param integer The BigInteger to divide by.
+     * @return Reference to this BigInteger after division.
+     */
+    self_reference operator/=(const_self_reference integer)
+    {
+        *this = *this / integer;
+        return *this;
+    }
+
+    /// modulo
+    /**
+     * @brief Returns the remainder of division between two BigIntegers.
+     * @param lhs The dividend BigInteger.
+     * @param rhs The divisor BigInteger.
+     * @return A new BigInteger representing the remainder.
+     */
+    friend self_type
+    operator%(const_self_reference lhs, const_self_reference rhs)
+    {
+        return S_divmod(lhs, rhs).second;
+    }
+
+    /**
+     * @brief Computes the remainder of this BigInteger divided by another.
+     * @param integer The BigInteger to divide by.
+     * @return Reference to this BigInteger after modulo operation.
+     */
+    self_reference operator%=(const_self_reference integer)
+    {
+        *this = *this % integer;
+        return *this;
+    }
+
     /**
      * @brief Converts to true if the BigInteger
      * is non-zero, otherwise false.
