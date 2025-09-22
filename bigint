@@ -308,6 +308,51 @@ public:
         return *this;
     }
 
+    /// increment and decrement operators
+    /**
+     * @brief Pre-increments this BigInteger by 1.
+     * @return Reference to this BigInteger after increment.
+     */
+    self_reference operator++()
+    {
+        *this += static_cast<self_type>(1);
+        return *this;
+    }
+
+    /**
+     * @brief Post-increments this BigInteger by 1.
+     * @param int Dummy parameter to distinguish post-increment.
+     * @return A copy of the BigInteger before increment.
+     */
+    self_type operator++(int)
+    {
+        self_type r = *this;
+        *this += static_cast<self_type>(1);
+        return r;
+    }
+
+    /**
+     * @brief Pre-decrements this BigInteger by 1.
+     * @return Reference to this BigInteger after decrement.
+     */
+    self_reference operator--()
+    {
+        *this -= static_cast<self_type>(1);
+        return *this;
+    }
+
+    /**
+     * @brief Post-decrements this BigInteger by 1.
+     * @param int Dummy parameter to distinguish post-decrement.
+     * @return A copy of the BigInteger before decrement.
+     */
+    self_type operator--(int)
+    {
+        self_type r = *this;
+        *this -= static_cast<self_type>(1);
+        return r;
+    }
+
     /**
      * @brief Converts to true if the BigInteger
      * is non-zero, otherwise false.
