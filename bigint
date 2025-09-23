@@ -418,6 +418,30 @@ public:
         return !(lhs == rhs);
     }
 
+    /// stream IO
+    /**
+     * @brief Reads a BigInteger from a stream.
+     */
+    friend std::istream&
+    operator>>(std::istream& is, self_reference integer)
+    {
+        std::string s{};
+        if (!(is >> s))
+            return is;
+        integer.M_from_string(s);
+        return is;
+    }
+
+    /**
+     * @brief Outputs the BigInteger to a stream.
+     */
+    friend std::ostream&
+    operator<<(std::ostream& os, const_self_reference integer)
+    {
+        os << integer.to_string();
+        return os;
+    }
+
     /**
      * @brief Converts to true if the BigInteger
      * is non-zero, otherwise false.
