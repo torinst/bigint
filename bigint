@@ -353,6 +353,71 @@ public:
         return r;
     }
 
+    /// comparisons
+    /**
+     * @brief Checks if lhs is less than rhs.
+     * @return true if lhs < rhs, otherwise false.
+     */
+    friend bool
+    operator<(const_self_reference lhs, const_self_reference rhs)
+    {
+        if (lhs.M_positive != rhs.M_positive)
+            return rhs.M_positive;
+        int cmp = lhs.M_compare_abs(rhs);
+        return (lhs.M_positive ? cmp < 0 : cmp > 0);
+    }
+
+    /**
+     * @brief Checks if lhs is less than or equal to rhs.
+     * @return true if lhs <= rhs, otherwise false.
+     */
+    friend bool
+    operator<=(const_self_reference lhs, const_self_reference rhs)
+    {
+        return !(rhs < lhs);
+    }
+
+    /**
+     * @brief Checks if lhs is greater than rhs.
+     * @return true if lhs > rhs, otherwise false.
+     */
+    friend bool
+    operator>(const_self_reference lhs, const_self_reference rhs)
+    {
+        return rhs < lhs;
+    }
+
+    /**
+     * @brief Checks if lhs is greater than or equal to rhs.
+     * @return true if lhs >= rhs, otherwise false.
+     */
+    friend bool
+    operator>=(const_self_reference lhs, const_self_reference rhs)
+    {
+        !(lhs < rhs);
+    }
+
+    /**
+     * @brief Checks if lhs is equal to rhs.
+     * @return true if lhs == rhs, otherwise false.
+     */
+    friend bool
+    operator==(const_self_reference lhs, const_self_reference rhs)
+    {
+        return (lhs.M_positive == rhs.M_positive
+             && lhs.M_storage == rhs.M_storage);
+    }
+
+    /**
+     * @brief Checks if lhs is not equal to rhs.
+     * @return true if lhs != rhs, otherwise false.
+     */
+    friend bool
+    operator!=(const_self_reference lhs, const_self_reference rhs)
+    {
+        return !(lhs == rhs);
+    }
+
     /**
      * @brief Converts to true if the BigInteger
      * is non-zero, otherwise false.
