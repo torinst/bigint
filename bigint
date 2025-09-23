@@ -124,6 +124,7 @@ private:
     using self_type = BigInteger<StoragePolicy, BasePolicy>;
     using self_reference = self_type&;
     using const_self_reference = const self_type&;
+    using r_self_reference = self_type&&;
 
 public:
     // constructors
@@ -139,12 +140,74 @@ public:
 
     BigInteger(const std::string& str)
     {
-        M_from_string(str);
+        (void)(M_from_string(str));
     }
+
+    BigInteger(const char* cstr)
+    : BigInteger(std::string(cstr))
+    { }
+
+    BigInteger(const_self_reference other)
+    : M_storage(other.M_storage)
+    , M_positive(other.M_positive)
+    { }
+
+    BigInteger(r_self_reference other) noexcept
+    : M_storage(std::move(other.M_storage))
+    , M_positive(other.M_positive)
+    { }
 
     // destructor
     ~BigInteger() = default;
 
+    /// assignment operator overload
+    // Assigns the BigInteger from a 64-bit integer.
+    self_reference operator=(int64_t integer)
+    {
+        M_reset();
+        if (integer < 0)
+        {
+            M_positive = false;
+            integer = -integer;
+        }
+        while (integer)
+        {
+            value_type x = static_cast<value_type>(integer % BASE);
+            M_storage.push_back(x);
+            integer /= BASE;
+        }
+        return *this;
+    }
+
+    self_reference operator=(const std::string& str)
+    {
+        return M_from_string(str);
+    }
+
+    self_reference operator=(const char* cstr)
+    {
+        return M_from_string(cstr);
+    }
+
+    self_reference operator=(const_self_reference other)
+    {
+        if (this != &other)
+        {
+            M_storage = other.M_storage;
+            M_positive = other.M_positive;
+        }
+        return *this;
+    }
+
+    self_reference operator=(r_self_reference other) noexcept
+    {
+        if (this != &other)
+        {
+            M_storage = std::move(other.M_storage);
+            M_positive = other.M_positive;
+        }
+        return *this;
+    }
 
     /* public functions accessible externally */
     /// the four basic arithmetic operations
@@ -166,7 +229,7 @@ public:
         }
         int cmp = lhs.M_compare_abs(rhs);
         if (cmp == 0)
-            return self_type(0);
+            return static_cast<self_type>(0);
         if (cmp > 0)
         {
             self_type r = lhs;
@@ -394,7 +457,7 @@ public:
     friend bool
     operator>=(const_self_reference lhs, const_self_reference rhs)
     {
-        !(lhs < rhs);
+        return !(lhs < rhs);
     }
 
     /**
@@ -449,28 +512,6 @@ public:
     explicit operator bool() const noexcept
     {
         return !M_zero();
-    }
-
-    /**
-     * @brief Assigns the BigInteger from a 64-bit integer.
-     * @param integer The 64-bit integer to assign from.
-     * @return Reference to this BigInteger after assignment.
-     */
-    self_reference operator=(int64_t integer)
-    {
-        M_reset();
-        if (integer < 0)
-        {
-            M_positive = false;
-            integer = -integer;
-        }
-        while (integer)
-        {
-            value_type x = static_cast<value_type>(integer % BASE);
-            M_storage.push_back(x);
-            integer /= BASE;
-        }
-        return *this;
     }
 
     /**
