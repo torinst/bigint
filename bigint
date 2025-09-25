@@ -31,42 +31,171 @@
 #include <vector>
 #include <sstream>  // stringstream
 #include <iomanip>  // setw(), setfill()
+#include <algorithm>   // reverse()
 
 namespace torelis
 {
 /**
- * @brief Base Policy for BigInteger.
+ * @brief Numeric Policy for BigInteger.
  *
- * The Base Policy defines how digits of a BigInteger are represented
+ * The Numeric Policy defines how digits of a BigInteger are represented
  * and managed internally. In other words, it specifies the numeric base
  * (radix) and related operations used for storing and manipulating
  * large integers.
  * 
- * To add a new base policy, implement the required interfaces
- * (digit type, base constant, helper functions).
- * Plug it into BigInteger via templates.
+ * For different number radices, it is only necessary to
+ * define three compiler constants in the derived class,
+ * namely RADIX, DIGITS_PER_BLOCK, and BASE.
  */
-// block-wise storage with base (10 ^ 9)
-struct Base10e9 // RADIX = 10 ^ DIGITS_PER_BLOCK
+struct NumericPolicyBase
 {
-    using base_type = uint32_t;
-    static constexpr base_type RADIX = 1000000000U;
-    static constexpr unsigned DIGITS_PER_BLOCK = 9U;
+    using radix_type = uint16_t;
+    using base_type = uint64_t;
+
+    /**
+     * @brief Converts a numeric string from one radix to another.
+     *
+     * @param str The input numeric string to convert.
+     * @param from The radix of the input string.
+     * @param to The target radix to convert to.
+     * @return The converted numeric string in the target radix.
+     */
+    static std::string
+    radix_convert(const std::string& str, radix_type from, radix_type to)
+    {
+        if ((from >= 2 && from <= 36) && (to >= 2 && to <= 36))
+        {
+            std::string temp = S_to_decimal(str, from);
+            return S_to_radix(temp, to);
+        }
+        throw std::invalid_argument("Radix must in [2, 36]");
+    }
+
+private:
+    // Converts a character to its numeric digit value.
+    static int S_to_digit(char c)
+    {
+        if (std::isdigit(c))
+            return c - '0';
+        else if (std::isalpha(c))
+        {
+            c = std::toupper(c);
+            return c - 'A' + 10;
+        }
+        throw std::invalid_argument("Must be 0-9, a-z, or A-Z");
+    }
+
+    // Converts a numeric digit to its character representation.
+    static char S_to_char(int digit)
+    {
+        if (0 <= digit && digit <= 9)
+            return '0' + digit;
+        if (10 <= digit && digit <= 35)
+            return 'A' + (digit - 10);
+        throw std::invalid_argument("Must in [0, 35]");
+    }
+
+    // Converts a string in a given radix to its
+    // decimal string representation.
+    static std::string
+    S_to_decimal(const std::string& str, radix_type radix)
+    {
+        size_t pos{0};
+        bool positive{true};
+        if (!str.empty() && str[0] == '-')
+        {
+            positive = false;
+            pos++;
+        }
+        std::string ret{"0"};
+        for (; pos < str.size(); ++pos)
+        {
+            std::string temp{ret};
+            int carry = S_to_digit(str[pos]);;
+            for (int64_t i = (int64_t)temp.size() - 1; i >= 0; --i)
+            {
+                int sum = (temp[i] - '0') * radix + carry;
+                temp[i] = (sum % 10) + '0';
+                carry = sum / 10;
+            }
+            while (carry)
+            {
+                temp.insert(temp.begin(), carry % 10 + '0');
+                carry /= 10;
+            }
+            ret = temp;
+        }
+        if (!positive)
+            ret.insert(ret.begin(), '-');
+        return ret;
+    }
+
+    // Converts a decimal string to a string in the specified radix.
+    static std::string
+    S_to_radix(const std::string& str, radix_type radix)
+    {
+        bool positive{true};
+        std::string s{str};
+        if (!s.empty() && s[0] == '-')
+        {
+            positive = false;
+            s.erase(s.begin());
+        }
+
+        std::string ret{};
+        std::string next{};
+        for (; ; )
+        {
+            int carry = 0;
+            next.clear();
+            for (const char c : s)
+            {
+                int x = carry * 10 + (c - '0');
+                next.push_back((x / radix) + '0');
+                carry = x % radix;
+            }
+            ret.push_back(S_to_char(carry));
+
+            auto pos = next.find_first_not_of('0');
+            if (pos == std::string::npos)
+                break;
+            s = next.substr(pos);
+        }
+        if (ret.empty())
+            ret = "0";
+        else
+            std::reverse(ret.begin(), ret.end());
+        if (!positive)
+            ret.insert(ret.begin(), '-');
+        return ret;
+    }
 };
 
-// block-wise storage with base (2 ^ 32)
-struct Base2e32 // RADIX = 2 ^ DIGITS_PER_BLOCK
+// block-wise storage with base (10 ^ 9)
+struct DecimalPolicy : public NumericPolicyBase
+{
+    /* BASE = RADIX ^ DIGITS_PER_BLOCK */
+    // radix, such as decimal, hexadecimal, etc.
+    static constexpr radix_type RADIX = 10U;
+    static constexpr unsigned DIGITS_PER_BLOCK = 9U;
+    // base, the value of each data block is in the range [0, BASE - 1]
+    static constexpr base_type BASE = 1000000000U;
+};
+
+struct BinaryPolicy // BASE = RADIX ^ DIGITS_PER_BLOCK
 {
     using base_type = uint64_t;
-    static constexpr base_type RADIX = 0x100000000UL;
+    using radix_type = uint16_t;
+    static constexpr radix_type RADIX = 2U;
     static constexpr unsigned DIGITS_PER_BLOCK = 32U;
+    static constexpr base_type BASE = 0x100000000UL;
 };
 
 /**
  * @brief Storage Policy for BigInteger.
  *
- * @tparam T The type of elements stored in the vector.
- * This can be any copyable or movable type that the vector will hold.
+ * @tparam T The type of elements stored in the container.
+ * This can be any copyable or movable type that the container will hold.
  * 
  * The Storage Policy defines how the sequence of digits (blocks)
  * of a BigInteger is stored in memory. It abstracts away the underlying
@@ -94,9 +223,9 @@ struct Storage
  * @tparam StoragePolicy  Defines how the sequence of digit blocks is
  * stored in memory.
  * eg., dynamic array(std::vector), fixed-size array, or custom allocator.
- * @tparam BasePolicy  Defines the numeric base (radix) and digit
- * representation.
- * eg., Base10e9 (blocks of 10^9), Base2^32 (binary blocks).
+ * @tparam NumericPolicy  Defines the numeric base (radix) and digit
+ * representation. Must be derived from NumericPolicyBase.
+ * eg., DecimalPolicy (blocks of 10 ^ 9).
  *
  * @details
  * The BigInteger class provides arithmetic and comparison operations for
@@ -104,27 +233,39 @@ struct Storage
  * mechanism and digit representation from arithmetic logic using policies,
  * making it modular and adaptable.
  * 
- * @note When providing StoragePolicy and BasePolicy, please
- * ensure that for any number x, with BASE = BasePolicy::RADIX
+ * @note When providing StoragePolicy and NumericPolicy, please
+ * ensure that for any number x, with BASE = NumericPolicy::BASE
  * and TYPE = StoragePolicy::value_type, it holds that
  * (x % BASE) <= std::numeric_limits<TYPE>::max().
  */
-template <class StoragePolicy, class BasePolicy>
+template <typename StoragePolicy
+        , typename NumericPolicy
+        , typename = std::__enable_if_t  // std::enable_if_t for C++11
+    <std::is_base_of<NumericPolicyBase, NumericPolicy>::value>>
 class BigInteger
 {
 private:
-    using base_type = typename BasePolicy::base_type;
+    using base_type = typename NumericPolicy::base_type;
+    using radix_type = typename NumericPolicy::radix_type;
     using value_type = typename StoragePolicy::value_type;
     using size_type = typename StoragePolicy::size_type;
     using wide_type = int64_t;
     using uwide_type = uint64_t;
-    static constexpr base_type BASE = BasePolicy::RADIX;
-    static constexpr unsigned SIZE = BasePolicy::DIGITS_PER_BLOCK;
 
-    using self_type = BigInteger<StoragePolicy, BasePolicy>;
+    using self_type = BigInteger<StoragePolicy, NumericPolicy>;
     using self_reference = self_type&;
     using const_self_reference = const self_type&;
     using r_self_reference = self_type&&;
+
+    // Alias for the type of the pointer to NumericPolicy::radix_convert
+    using f_radix_convert_t = decltype(&NumericPolicy::radix_convert);
+
+protected:
+    static constexpr base_type BASE = NumericPolicy::BASE;
+    static constexpr unsigned SIZE = NumericPolicy::DIGITS_PER_BLOCK;
+    static constexpr radix_type RADIX = NumericPolicy::RADIX;
+    static constexpr f_radix_convert_t
+                f_radix_convert = &NumericPolicy::radix_convert;
 
 public:
     // constructors
@@ -135,16 +276,22 @@ public:
 
     BigInteger(int64_t integer)
     {
-        *this = integer;
+        (void)(M_from_integer(integer));
     }
 
-    BigInteger(const std::string& str)
+    BigInteger(const std::string& str, radix_type radix = RADIX)
     {
+        if (radix != RADIX)
+        {
+            std::string s = f_radix_convert(str, radix, RADIX);
+            (void)(M_from_string(s));
+            return ;
+        }
         (void)(M_from_string(str));
     }
 
-    BigInteger(const char* cstr)
-    : BigInteger(std::string(cstr))
+    BigInteger(const char* cstr, radix_type radix)
+    : BigInteger(std::string(cstr), radix)
     { }
 
     BigInteger(const_self_reference other)
@@ -164,21 +311,15 @@ public:
     // Assigns the BigInteger from a 64-bit integer.
     self_reference operator=(int64_t integer)
     {
-        M_reset();
-        if (integer < 0)
-        {
-            M_positive = false;
-            integer = -integer;
-        }
-        while (integer)
-        {
-            value_type x = static_cast<value_type>(integer % BASE);
-            M_storage.push_back(x);
-            integer /= BASE;
-        }
-        return *this;
+        return M_from_integer(integer);
     }
 
+    /// operator=(const std::string&)
+    ///   Assigns the BigInteger from a string;
+    /// operator=(const char* cstr)
+    ///   Assigns the BigInteger from a C-style string.
+    /// Defaults to decimal radix; for non-decimal, use
+    /// the corresponding constructor.
     self_reference operator=(const std::string& str)
     {
         return M_from_string(str);
@@ -596,6 +737,28 @@ private:
     }
 
     /**
+     * @brief Initializes the BigInteger from a 64-bit integer.
+     * @param integer The 64-bit integer to convert.
+     * @return Reference to the current BigInteger.
+     */
+    self_reference M_from_integer(int64_t integer)
+    {
+        M_reset();
+        if (integer < 0)
+        {
+            M_positive = false;
+            integer = -integer;
+        }
+        while (integer)
+        {
+            value_type x = static_cast<value_type>(integer % BASE);
+            M_storage.push_back(x);
+            integer /= BASE;
+        }
+        return *this;
+    }
+
+    /**
      * @brief Initializes the BigInteger from a string representation.
      *
      * Parses the input string and sets the BigInteger value accordingly.
@@ -623,10 +786,8 @@ private:
             for (ptrdiff_t j = l; j <= i; ++j)
             {
                 if (!isdigit((unsigned char)str[j]))
-                {
                     throw std::invalid_argument("Invalid digit");
-                }
-                x = x * 10 + (str[j] - '0');
+                x = x * RADIX + (str[j] - '0');
             }
             M_storage.push_back(x);
         }
@@ -838,8 +999,8 @@ private:
 };
 
 // The storage policy defaults to std::vector<uint32_t>,
-// and the base policy defaults to Base10e9.
-using bigint_t = BigInteger<std::vector<uint32_t>, Base10e9>;
+// and the base policy defaults to DecimalPolicy.
+using bigint_t = BigInteger<std::vector<uint32_t>, DecimalPolicy>;
 
 } // namespace torelis
 
