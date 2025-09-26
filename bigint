@@ -32,6 +32,7 @@
 #include <sstream>  // stringstream
 #include <iomanip>  // setw(), setfill()
 #include <algorithm>   // reverse()
+#include <type_traits>
 
 namespace torelis
 {
@@ -290,7 +291,10 @@ public:
         (void)(M_from_string(str));
     }
 
-    BigInteger(const char* cstr, radix_type radix)
+    template <typename Cstr
+            , typename = std::__enable_if_t
+        <std::is_same<Cstr, const char*>::value>>
+    BigInteger(Cstr cstr, radix_type radix = RADIX)
     : BigInteger(std::string(cstr), radix)
     { }
 
@@ -325,7 +329,10 @@ public:
         return M_from_string(str);
     }
 
-    self_reference operator=(const char* cstr)
+    template <typename Cstr
+            , typename = typename std::enable_if
+        <std::is_same<Cstr, const char*>::value>::type>
+    self_reference operator=(Cstr cstr)
     {
         return M_from_string(cstr);
     }
