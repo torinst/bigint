@@ -480,7 +480,7 @@ public:
     friend self_type
     operator/(const_self_reference lhs, const_self_reference rhs)
     {
-        return S_divmod(lhs, rhs).frist;
+        return S_divmod(lhs, rhs).first;
     }
 
     /**
