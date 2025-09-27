@@ -48,7 +48,7 @@ namespace torelis
  * define three compiler constants in the derived class,
  * namely RADIX, DIGITS_PER_BLOCK, and BASE.
  */
-struct NumericPolicyBase
+struct NumericBase
 {
     using radix_type = uint16_t;
     using base_type = uint64_t;
@@ -62,7 +62,7 @@ struct NumericPolicyBase
      * @return The converted numeric string in the target radix.
      */
     static std::string
-    radix_convert(const std::string& str, radix_type from, radix_type to)
+    S_radix_convert(const std::string& str, radix_type from, radix_type to)
     {
         if ((from >= 2 && from <= 36) && (to >= 2 && to <= 36))
         {
@@ -173,7 +173,7 @@ private:
 };
 
 // block-wise storage with base (10 ^ 9)
-struct DecimalPolicy : public NumericPolicyBase
+struct Decimal : public NumericBase
 {
     /* BASE = RADIX ^ DIGITS_PER_BLOCK */
     // radix, such as decimal, hexadecimal, etc.
@@ -183,7 +183,7 @@ struct DecimalPolicy : public NumericPolicyBase
     static constexpr base_type BASE = 1000000000U;
 };
 
-struct BinaryPolicy // BASE = RADIX ^ DIGITS_PER_BLOCK
+struct Binary // BASE = RADIX ^ DIGITS_PER_BLOCK
 {
     using base_type = uint64_t;
     using radix_type = uint16_t;
@@ -221,12 +221,12 @@ struct Storage
 /**
  * @brief Arbitrary-precision integer class using policy-based design.
  *
- * @tparam StoragePolicy  Defines how the sequence of digit blocks is
+ * @tparam Storage  Defines how the sequence of digit blocks is
  * stored in memory.
  * eg., dynamic array(std::vector), fixed-size array, or custom allocator.
- * @tparam NumericPolicy  Defines the numeric base (radix) and digit
- * representation. Must be derived from NumericPolicyBase.
- * eg., DecimalPolicy (blocks of 10 ^ 9).
+ * @tparam Numeric  Defines the numeric base (radix) and digit
+ * representation. Must be derived from NumericBase.
+ * eg., Decimal (blocks of 10 ^ 9).
  *
  * @details
  * The BigInteger class provides arithmetic and comparison operations for
@@ -234,39 +234,39 @@ struct Storage
  * mechanism and digit representation from arithmetic logic using policies,
  * making it modular and adaptable.
  * 
- * @note When providing StoragePolicy and NumericPolicy, please
- * ensure that for any number x, with BASE = NumericPolicy::BASE
- * and TYPE = StoragePolicy::value_type, it holds that
+ * @note When providing Storage and Numeric, please ensure
+ * that for any number x, with BASE = Numeric::BASE and
+ * TYPE = Storage::value_type, it holds that
  * (x % BASE) <= std::numeric_limits<TYPE>::max().
  */
-template <typename StoragePolicy
-        , typename NumericPolicy
+template <typename Storage
+        , typename Numeric
         , typename = std::__enable_if_t  // std::enable_if_t for C++11
-    <std::is_base_of<NumericPolicyBase, NumericPolicy>::value>>
+    <std::is_base_of<NumericBase, Numeric>::value>>
 class BigInteger
 {
 private:
-    using base_type = typename NumericPolicy::base_type;
-    using radix_type = typename NumericPolicy::radix_type;
-    using value_type = typename StoragePolicy::value_type;
-    using size_type = typename StoragePolicy::size_type;
+    using base_type = typename Numeric::base_type;
+    using radix_type = typename Numeric::radix_type;
+    using value_type = typename Storage::value_type;
+    using size_type = typename Storage::size_type;
     using wide_type = int64_t;
     using uwide_type = uint64_t;
 
-    using self_type = BigInteger<StoragePolicy, NumericPolicy>;
+    using self_type = BigInteger<Storage, Numeric>;
     using self_reference = self_type&;
     using const_self_reference = const self_type&;
     using r_self_reference = self_type&&;
 
-    // Alias for the type of the pointer to NumericPolicy::radix_convert
-    using f_radix_convert_t = decltype(&NumericPolicy::radix_convert);
+    // Alias for the type of the pointer to Numeric::S_radix_convert
+    using f_radix_convert_t = decltype(&Numeric::S_radix_convert);
 
 protected:
-    static constexpr base_type BASE = NumericPolicy::BASE;
-    static constexpr unsigned SIZE = NumericPolicy::DIGITS_PER_BLOCK;
-    static constexpr radix_type RADIX = NumericPolicy::RADIX;
+    static constexpr base_type BASE = Numeric::BASE;
+    static constexpr unsigned SIZE = Numeric::DIGITS_PER_BLOCK;
+    static constexpr radix_type RADIX = Numeric::RADIX;
     static constexpr f_radix_convert_t
-                f_radix_convert = &NumericPolicy::radix_convert;
+                f_radix_convert = &Numeric::S_radix_convert;
 
 public:
     // constructors
@@ -1000,13 +1000,13 @@ private:
         return M_storage.empty();
     }
 
-    StoragePolicy M_storage{};
+    Storage M_storage{};
     bool M_positive{true};
 };
 
 // The storage policy defaults to std::vector<uint32_t>,
-// and the base policy defaults to DecimalPolicy.
-using bigint_t = BigInteger<std::vector<uint32_t>, DecimalPolicy>;
+// and the numeric policy defaults to Decimal.
+using bigint_t = BigInteger<std::vector<uint32_t>, Decimal>;
 
 } // namespace torelis
 
