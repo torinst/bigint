@@ -386,7 +386,6 @@ public:
         }
         self_type r = rhs;
         r.M_subtract_abs(lhs);
-        r.M_positive = !r.M_positive;
         return r;
     }
 
@@ -454,7 +453,7 @@ public:
     operator*(const_self_reference lhs, const_self_reference rhs)
     {
         self_type r = S_multiply_abs(lhs, rhs);
-        r.M_positive = lhs.M_positive ^ rhs.M_positive;
+        r.M_positive = !(lhs.M_positive ^ rhs.M_positive);
         if (r.M_zero())
             r.M_positive = true;
         return r;
@@ -982,7 +981,7 @@ private:
         r.M_trim();
 
         // fix signs
-        q.M_positive = dividend.M_positive ^ divisor.M_positive;
+        q.M_positive = !(dividend.M_positive ^ divisor.M_positive);
         if (q.M_zero())
             q.M_positive = true;
         r.M_positive = dividend.M_positive;
