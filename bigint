@@ -27,12 +27,12 @@
   #error "This project requires C++11 or higher"
 #endif
 
-#include <bits/stdint-uintn.h>
-#include <vector>
-#include <sstream>  // stringstream
-#include <iomanip>  // setw(), setfill()
-#include <algorithm>   // reverse()
 #include <type_traits>
+#include <cstdint>
+#include <vector>
+#include <sstream>          // for stringstream
+#include <iomanip>          // for setw(), setfill()
+#include <algorithm>        // for reverse()
 
 namespace torelis
 {
@@ -76,12 +76,13 @@ private:
     // Converts a character to its numeric digit value.
     static int S_to_digit(char c)
     {
-        if (std::isdigit(c))
-            return c - '0';
-        else if (std::isalpha(c))
+        uint8_t uc = static_cast<uint8_t>(c);
+        if (std::isdigit(uc))
+            return uc - '0';
+        else if (std::isalpha(uc))
         {
-            c = std::toupper(c);
-            return c - 'A' + 10;
+            uc = static_cast<uint8_t>(std::toupper(uc));
+            return uc - 'A' + 10;
         }
         throw std::invalid_argument("Must be 0-9, a-z, or A-Z");
     }
@@ -90,9 +91,9 @@ private:
     static char S_to_char(int digit)
     {
         if (0 <= digit && digit <= 9)
-            return '0' + digit;
+            return static_cast<char>('0' + digit);
         if (10 <= digit && digit <= 35)
-            return 'A' + (digit - 10);
+            return static_cast<char>('A' + (digit - 10));
         throw std::invalid_argument("Must in [0, 35]");
     }
 
@@ -116,12 +117,13 @@ private:
             for (int64_t i = (int64_t)temp.size() - 1; i >= 0; --i)
             {
                 int sum = (temp[i] - '0') * radix + carry;
-                temp[i] = (sum % 10) + '0';
+                temp[i] = static_cast<char>((sum % 10) + '0');
                 carry = sum / 10;
             }
             while (carry)
             {
-                temp.insert(temp.begin(), carry % 10 + '0');
+                temp.insert(temp.begin(),
+                    static_cast<char>(carry % 10 + '0'));
                 carry /= 10;
             }
             ret = temp;
@@ -152,7 +154,7 @@ private:
             for (const char c : s)
             {
                 int x = carry * 10 + (c - '0');
-                next.push_back((x / radix) + '0');
+                next.push_back(static_cast<char>((x / radix) + '0'));
                 carry = x % radix;
             }
             ret.push_back(S_to_char(carry));
