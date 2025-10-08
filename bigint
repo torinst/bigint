@@ -1,19 +1,12 @@
 /**
  * @file bigint
- * @brief A single-header C++ BigInteger implementation.
+ * @brief A single-header C++ bigint implementation.
  * 
  * Copyright (c) 2025, Torelis.  All rights reserved.
  *
- * This file defines a BigInteger class that supports arbitrary-precision
- * integer arithmetic and comparison operations, exceeding the limits of
- * built-in integer types.
- *
- * Arbitrary-precision integer representation.
- * Basic arithmetic operations: addition, subtraction, multiplication
- * and division.
- * Comparison operators (==, !=, <, <=, >, >=).
- * Policy-based design for base/radix and storage (extensible).
- * Header-only, no external dependencies.
+ * This file defines a bigint class that supports arbitrary-precision
+ * integer arithmetic and comparison operations, exceeding the limits
+ * of built-in integer types.
  */
 
 #pragma once
@@ -21,71 +14,212 @@
 /// This file uses C++11 features such as using type aliases and constexpr
 /// variables and functions, so a C++11 compatible compiler is required.
 #if __cplusplus < 201103L
-  #error "This project requires C++11 or higher"
+# error "This header requires C++11 or higher"
 #endif
 
-#include <type_traits>
+#include <cstdarg>        // for va_list, va_start(), etc.
+#include <cctype>
 #include <cstdint>
+#include <type_traits>    // for enable_if, etc.
+#include <string>
 #include <vector>
-#include <sstream>          // for stringstream
-#include <iomanip>          // for setw(), setfill()
-#include <algorithm>        // for reverse()
+#include <algorithm>      // for reverse()
+#include <iomanip>        // for setw(), setfill()
+#include <sstream>        // for stringstream
+#include <stdexcept>
 
 namespace torelis
 {
+
 /**
- * @brief Numeric Policy for BigInteger.
- *
- * The Numeric Policy defines how digits of a BigInteger are represented
- * and managed internally. In other words, it specifies the numeric base
- * (radix) and related operations used for storing and manipulating
- * large integers.
+ * @brief Throws an exception of type _Type with a formatted message.
  * 
- * For different number radices, it is only necessary to
- * define three compiler constants in the derived class,
- * namely RADIX, DIGITS_PER_BLOCK, and BASE.
+ * @tparam _Type Exception type (must have constructor from std::string)
+ * @param file Current file name (__FILE__)
+ * @param line Current line number (__LINE__)
+ * @param fmt printf-style format string
+ * @param ... Format arguments
  */
-struct NumericBase
+template <typename _Type = std::logic_error>
+[[noreturn]]
+void __throw_fmt(const char* file, int line, const char* fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+
+    // calculates message length
+    va_list args_copy;
+    va_copy(args_copy, args);
+    int size = std::vsnprintf(nullptr, 0, fmt, args_copy);
+    va_end(args_copy);
+    if (size < 0)
+    {
+        va_end(args);
+        throw std::runtime_error("failed to format exception message");
+    }
+
+    // full length
+    int x = std::snprintf(nullptr, 0, "in %s: \'", file);
+    int y = std::snprintf(nullptr, 0, "\' at line %d", line);
+    int total = x + size + y;
+
+    // Creates a buffer and write formatted string
+    std::vector<char> buf(total + 1);
+    int offset = std::snprintf(buf.data(), buf.size(), "in %s: \'", file);
+    std::vsnprintf(buf.data() + offset, buf.size() - offset, fmt, args);
+    va_end(args);
+    std::snprintf(buf.data() + total - y, y + 1, "\' at line %d", line);
+
+    throw _Type(buf.data());
+}
+
+#define throw_fmt(fmt, ...)          \
+    __throw_fmt<>(__FILE__, __LINE__, fmt, ##__VA_ARGS__)
+#define throw_fmt_t(type, fmt, ...)  \
+    __throw_fmt<type>(__FILE__, __LINE__, fmt, ##__VA_ARGS__)
+
+/**
+ * @brief This struct defines how digits of a bigint are represented and
+ * managed internally. In other words, it specifies the numeric base(radix)
+ * and related operations used for storing and manipulating large integers.
+ * 
+ * @note This struct provides basic numeric utilities. Concrete numeric
+ * policies (e.g., Decimal, Binary) should derive from this struct. The
+ * derived class must provide definitions for RADIX, BLOCK_SIZE, and BASE.
+ */
+struct Numeric
 {
     typedef uint16_t radix_type;
     typedef uint64_t base_type;
 
+    /// @brief Removes spaces from a numeric string.
+    static std::string
+    S_remove_space(const std::string& str)
+    {
+        std::string trimmed{};
+        trimmed.reserve(str.size());
+        for (const char c : str)
+        {
+            if (std::isspace(static_cast<uint8_t>(c)))
+                continue;
+            trimmed.push_back(c);
+        }
+        trimmed.shrink_to_fit();
+        return trimmed;
+    }
+
+    /// @brief Trims leading zero from a numeric string.
+    static std::string
+    S_trim_leading_zero(const std::string& str)
+    {
+        auto pos = str.find_first_not_of('0');
+        if (pos == std::string::npos)
+            return std::string{};
+        return str.substr(pos);
+    }
+
     /**
-     * @brief Converts a numeric string from one radix to another.
-     *
-     * @param str The input numeric string to convert.
-     * @param from The radix of the input string.
-     * @param to The target radix to convert to.
-     * @return The converted numeric string in the target radix.
+     * @brief Parse the sign of a numeric string.
+     * 
+     * Sets @p positive to true if the @p str is positive, false if negative.
      */
+    static std::string
+    S_parse_sign(const std::string& str, bool& positive)
+    {
+        positive = true;
+        if (str.empty())
+            return {};
+        auto last_sign = str.find_last_of("+-");
+        if (last_sign != std::string::npos)
+        {
+            if (str[last_sign] == '-')
+                positive = false;
+            return str.substr(last_sign + 1);
+        }
+        return str;
+    }
+
+    /// @brief Removes spaces and leading zeros, and parses the sign.
+    static std::string
+    S_normalize(const std::string& str, bool& positive)
+    {
+        std::string normalized = S_remove_space(str);
+        normalized = S_trim_leading_zero(normalized);
+        normalized = S_parse_sign(normalized, positive);
+        return normalized;
+    }
+
+    /**
+     * @brief Apply a sign to a numeric string.
+     * 
+     * Prepends '-' if @p positive is false, otherwise do nothing.
+     */
+    static std::string
+    S_apply_sign(const std::string& str, bool positive)
+    {
+        std::string signed_str{};
+        if (!positive && !str.empty())
+            signed_str.push_back('-');
+        signed_str.append(str);
+        return signed_str;
+    }
+
+    /// @brief Convert a numeric string from a given radix to decimal.
+    static std::string
+    S_from_radix(const std::string& str, radix_type radix)
+    {
+        std::string decimal{};
+        for (const char c : str)
+        {
+            int digit = S_todigit(c);
+            decimal = S_multiply_radix(decimal, radix, digit);
+        }
+        return decimal;
+    }
+
+    /// @brief Convert a numeric string from decimal to a given radix.
+    static std::string
+    S_to_radix(const std::string& str, radix_type radix)
+    {
+        std::string tmp{str};
+        std::string radix_str{};
+        while (!(tmp.empty()))
+        {
+            int remainder = 0;
+            tmp = S_divide_radix(tmp, radix, remainder);
+            radix_str.push_back(S_tochar(remainder));
+        }
+        std::reverse(radix_str.begin(), radix_str.end());
+        return radix_str;
+    }
+
+    /// @brief Convert a numeric string from one radix to another.
     static std::string
     S_radix_convert(const std::string& str, radix_type from, radix_type to)
     {
-        if ((from >= 2 && from <= 36) && (to >= 2 && to <= 36))
-        {
-            std::string temp = S_to_decimal(str, from);
-            return S_to_radix(temp, to);
-        }
-        throw std::invalid_argument("Radix must in [2, 36]");
+        if ((from < 2 || from > 36) || (to < 2 || to > 36))
+            throw std::invalid_argument("Radix must in [2, 36]");
+        std::string tmp{S_from_radix(str, from)};
+        return S_to_radix(tmp, to);
     }
 
 private:
-    // Converts a character to its numeric digit value.
-    static int S_to_digit(char c)
+    // Returns the index of a character in the sequence [0-9A-Z].
+    static int S_todigit(char c)
     {
         uint8_t uc = static_cast<uint8_t>(c);
         if (std::isdigit(uc))
             return uc - '0';
-        else if (std::isalpha(uc))
+        if (std::isalpha(uc))
         {
             uc = static_cast<uint8_t>(std::toupper(uc));
             return uc - 'A' + 10;
         }
-        throw std::invalid_argument("Must be 0-9, a-z, or A-Z");
+        throw_fmt("Must be 0-9, a-z, or A-Z (which is '%c')", uc);
     }
 
-    // Converts a numeric digit to its character representation.
-    static char S_to_char(int digit)
+    // Returns the character for an index in the sequence [0-9A-Z].
+    static char S_tochar(int digit)
     {
         if (0 <= digit && digit <= 9)
             return static_cast<char>('0' + digit);
@@ -94,298 +228,282 @@ private:
         throw std::invalid_argument("Must in [0, 35]");
     }
 
-    // Converts a string in a given radix to its
-    // decimal string representation.
+    // Performs on a decimal string: ret = str * radix + digit
     static std::string
-    S_to_decimal(const std::string& str, radix_type radix)
+    S_multiply_radix(const std::string& str, radix_type radix, int digit)
     {
-        size_t pos{0};
-        bool positive{true};
-        if (!str.empty() && str[0] == '-')
+        std::string ret{str};
+        int carry = digit;
+        for (auto it = ret.rbegin(); it != ret.rend(); ++it)
         {
-            positive = false;
-            pos++;
+            int sum = (*it - '0') * radix + carry;
+            *it = static_cast<char>((sum % 10) + '0');
+            carry = sum / 10;
         }
-        std::string ret{"0"};
-        for (; pos < str.size(); ++pos)
+        while (carry)
         {
-            std::string temp{ret};
-            int carry = S_to_digit(str[pos]);;
-            for (int64_t i = (int64_t)temp.size() - 1; i >= 0; --i)
-            {
-                int sum = (temp[i] - '0') * radix + carry;
-                temp[i] = static_cast<char>((sum % 10) + '0');
-                carry = sum / 10;
-            }
-            while (carry)
-            {
-                temp.insert(temp.begin(),
-                    static_cast<char>(carry % 10 + '0'));
-                carry /= 10;
-            }
-            ret = temp;
+            ret.insert(ret.begin(), static_cast<char>((carry % 10) + '0'));
+            carry /= 10;
         }
-        if (!positive)
-            ret.insert(ret.begin(), '-');
         return ret;
     }
 
-    // Converts a decimal string to a string in the specified radix.
+    // Performs division on a decimal string: str / radix
     static std::string
-    S_to_radix(const std::string& str, radix_type radix)
+    S_divide_radix(const std::string& str, radix_type radix, int& remainder)
     {
-        bool positive{true};
-        std::string s{str};
-        if (!s.empty() && s[0] == '-')
+        remainder = 0;
+        std::string quotient{};
+        for (const char c : str)
         {
-            positive = false;
-            s.erase(s.begin());
+            int x = remainder * 10 + (c - '0');
+            quotient.push_back(static_cast<char>((x / radix) + '0'));
+            remainder = x % radix;
         }
-
-        std::string ret{};
-        std::string next{};
-        for (; ; )
-        {
-            int carry = 0;
-            next.clear();
-            for (const char c : s)
-            {
-                int x = carry * 10 + (c - '0');
-                next.push_back(static_cast<char>((x / radix) + '0'));
-                carry = x % radix;
-            }
-            ret.push_back(S_to_char(carry));
-
-            auto pos = next.find_first_not_of('0');
-            if (pos == std::string::npos)
-                break;
-            s = next.substr(pos);
-        }
-        if (ret.empty())
-            ret = "0";
-        else
-            std::reverse(ret.begin(), ret.end());
-        if (!positive)
-            ret.insert(ret.begin(), '-');
-        return ret;
+        return S_trim_leading_zero(quotient);
     }
-};
-
-// block-wise storage with base (10 ^ 9)
-struct Decimal : public NumericBase
-{
-    /* BASE = RADIX ^ DIGITS_PER_BLOCK */
-    // radix, such as decimal, hexadecimal, etc.
-    static constexpr radix_type RADIX = 10U;
-    static constexpr unsigned DIGITS_PER_BLOCK = 9U;
-    // base, the value of each data block is in the range [0, BASE - 1]
-    static constexpr base_type BASE = 1000000000U;
 };
 
 /**
- * @brief Storage Policy for BigInteger.
- *
- * @tparam T The type of elements stored in the container.
- * This can be any copyable or movable type that the container will hold.
- * 
- * The Storage Policy defines how the sequence of digits (blocks)
- * of a BigInteger is stored in memory. It abstracts away the underlying
- * container and memory management, allowing flexibility in performance,
- * memory usage, and custom allocation strategies.
- *
- * Separates the storage mechanism from arithmetic logic.
- * Allows swapping different containers (e.g., std::vector, std::deque,
- * custom allocator).
- * Supports dynamic resizing, insertion, and removal of digit blocks.
- * 
- * @note If an STL container is used as the storage policy, it can
- * be passed directly to the BigInteger template class via the first
- * template parameter. Only when managing the storage policy manually
- * is it necessary to implement a Storage class (or struct).
+ * @brief block-wise storage with base (10 ^ 9)
  */
-template <typename T>
+struct Decimal : public Numeric
+{
+    static constexpr radix_type RADIX = static_cast<radix_type>(10);
+    static constexpr unsigned BLOCK_SIZE = static_cast<unsigned>(9);
+    static constexpr base_type BASE = static_cast<base_type>(1000000000);
+};
+
+/**
+ * @brief Wraps an STL-like container to expose required typedefs for bigint.
+ * @tparam _Type The basic unit type for storing bigint, which determines how
+ * the bigint is internally stored in blocks.
+ * @tparam _Container Underlying container. Defaults to std::vector<_Type>
+ */
+template <typename _Type, typename _Container = std::vector<_Type>>
 struct Storage
 {
+private:
+    static_assert(std::is_same
+        <typename _Container::value_type, _Type>::value,
+      "_Container::value_type must be the same as _Type");
+
+public:
+    typedef _Container          container_type;
+    typedef typename container_type::value_type  value_type;
+    typedef typename container_type::size_type   size_type;
+    typedef typename container_type::difference_type difference_type;
+
+    // factory: creates an empty container
+    static container_type make_empty()
+    {
+        return container_type();
+    }
 };
 
 /**
- * @brief Arbitrary-precision integer class using policy-based design.
- *
- * @tparam Storage  Defines how the sequence of digit blocks is
- * stored in memory.
- * eg., dynamic array(std::vector), fixed-size array, or custom allocator.
- * @tparam Numeric  Defines the numeric base (radix) and digit
- * representation. Must be derived from NumericBase.
- * eg., Decimal (blocks of 10 ^ 9).
- *
- * @details
- * The BigInteger class provides arithmetic and comparison operations for
- * integers beyond the limits of built-in types. It separates the storage
- * mechanism and digit representation from arithmetic logic using policies,
- * making it modular and adaptable.
- * 
- * @note When providing Storage and Numeric, please ensure
- * that for any number x, with BASE = Numeric::BASE and
- * TYPE = Storage::value_type, it holds that
- * (x % BASE) <= std::numeric_limits<TYPE>::max().
+ * @brief Bigint class template.
+ * @tparam _Storage Storage policy, defaults to Storage<uint32_t>.
+ * @tparam _Numeric Numeric policy, defaults to Decimal.
+ * @tparam _Enable SFINAE helper, defaults to void.
  */
-template <typename Storage
-        , typename Numeric
-        , typename = std::__enable_if_t  // std::enable_if_t for C++11
-    <std::is_base_of<NumericBase, Numeric>::value>>
-class BigInteger
+template <typename _Storage = Storage<uint32_t>,
+  typename _Numeric = Decimal, typename _Enable = void>
+class bigint;   // primary declaration
+
+/**
+ * @brief Type trait to detect whether a container type
+ * has a nested `value_type`.
+ * @tparam _T Container type to check.
+ */
+template <typename _T>
+struct has_value_type
 {
 private:
-    typedef typename Storage::value_type    value_type;
-    typedef typename Storage::size_type     size_type;
-    typedef typename Storage::difference_type difference_type;
-    typedef Numeric::base_type     base_type;
-    typedef Numeric::radix_type    radix_type;
-    typedef int64_t                wide_type;
-    typedef uint64_t               uwide_type;
+    template <typename _U>
+    static typename _U::value_type test(_U*);
 
-    using self_type = BigInteger<Storage, Numeric>;
-    using self_reference = self_type&;
-    using const_self_reference = const self_type&;
-    using r_self_reference = self_type&&;
-
-    // Alias for the type of the pointer to Numeric::S_radix_convert
-    using f_radix_convert_t = decltype(&Numeric::S_radix_convert);
-
-protected:
-    static constexpr base_type BASE    = Numeric::BASE;
-    static constexpr unsigned SIZE     = Numeric::DIGITS_PER_BLOCK;
-    static constexpr radix_type RADIX  = Numeric::RADIX;
-    static constexpr f_radix_convert_t
-                f_radix_convert = &Numeric::S_radix_convert;
+    template <typename>
+    static void test(...);
 
 public:
-    // constructors
-    BigInteger() // = default;
-    : M_storage()
-    , M_positive(true)
-    { }
+    enum { value = !std::is_same<void, decltype(test((_T*)0))>::value };
+};
 
-    BigInteger(int64_t integer)
+/**
+ * @brief Trait that is true if _Derived is a strict subclass of _Base.
+ * @tparam _Base Base class type.
+ * @tparam _Derived Derived class type.
+ * @note A strict subclass is defined as: _Derived inherits from _Base
+ * but is not the same type.
+ */
+template <typename _Base, typename _Derived>
+struct is_strict_base_of
+  : std::integral_constant
+       <bool, std::is_base_of<_Base, _Derived>::value
+    && !std::is_same<_Base, _Derived>::value>
+{ };
+
+// Specialization when passed Storage-like type (has nested types)
+template <typename _Storage, typename _Numeric>
+class bigint<_Storage, _Numeric, typename std::enable_if
+        <has_value_type<_Storage>::value
+      && is_strict_base_of<Numeric, _Numeric>::value>::type>
+{
+private:
+    // types from storage
+    typedef _Storage                            storage_type;
+    typedef typename storage_type::container_type container_type;
+    typedef typename storage_type::value_type   value_type;
+    typedef typename storage_type::size_type    size_type;
+    typedef typename storage_type::difference_type difference_type;
+
+    // numeric types
+    typedef _Numeric                            numeric_type;
+    typedef typename numeric_type::base_type    base_type;
+    typedef typename numeric_type::radix_type   radix_type;
+
+    // extra utility types
+    typedef int64_t                         wide_type;
+    typedef uint64_t                        uwide_type;
+
+    static_assert(std::is_integral<value_type>::value,
+                     "Storage block type must be integral");
+
+protected:
+    static constexpr radix_type RADIX = numeric_type::RADIX;
+    static constexpr unsigned SIZE = numeric_type::BLOCK_SIZE;
+    static constexpr base_type BASE = numeric_type::BASE;
+
+public:
+    // construct/copy/destroy
+    /**
+     * @brief Creates a bigint without providing a value.
+     * @note If no value is provided, a bigint defaults to 0.
+     */
+    bigint() = default;
+
+    /**
+     * @brief Creates a bigint from a 64-bit integer.
+     * @param integer A 64-bit integer used to create bigint.
+     */
+    bigint(int64_t integer)
     {
-        (void)(M_from_integer(integer));
+        (void)(this->M_assign(integer));
     }
 
-    BigInteger(const std::string& str, radix_type radix = RADIX)
+    /**
+     * @brief Creates a bigint from a string representation.
+     * @param str Numeric string to create the bigint.
+     * @param radix Numeric radix of the string, defaults to RADIX.
+     * 
+     * If the numeric string's radix differs from RADIX, use this
+     * constructor to explicitly specify the radix; otherwise, the
+     * result may be incorrect.
+     */
+    bigint(const std::string& str, radix_type radix = RADIX)
     {
+        std::string normalized = numeric_type::S_normalize(str, M_positive);
         if (radix != RADIX)
         {
-            std::string s = f_radix_convert(str, radix, RADIX);
-            (void)(M_from_string(s));
-            return ;
+            normalized = numeric_type
+              ::S_radix_convert(normalized, radix, RADIX);
         }
-        (void)(M_from_string(str));
+        (void)(this->M_assign(normalized));
     }
 
-    template <typename Cstr
-            , typename = std::__enable_if_t
-        <std::is_same<Cstr, const char*>::value>>
-    BigInteger(Cstr cstr, radix_type radix = RADIX)
-    : BigInteger(std::string(cstr), radix)
+    /**
+     * @brief Creates a bigint from a C-string.
+     * @param cstr Numeric C-string to create the bigint.
+     * @param radix Numeric radix of the string, defaults to RADIX.
+     * 
+     * C-string version of
+     * `bigint(const std::string& str, radix_type radix = RADIX)`
+     */
+    template <typename _Cstr, typename = typename std::enable_if
+             <std::is_same<_Cstr, const char*>::value>::type>
+    bigint(_Cstr cstr, radix_type radix = RADIX)
+    : bigint(std::string(cstr), radix)
     { }
 
-    BigInteger(const_self_reference other)
-    : M_storage(other.M_storage)
-    , M_positive(other.M_positive)
-    { }
+    /// Copy constructor
+    bigint(const bigint&) = default;
+    /// Move constructor
+    bigint(bigint&&) noexcept = default;
+    /// Destructor
+    ~bigint() = default;
 
-    BigInteger(r_self_reference other) noexcept
-    : M_storage(std::move(other.M_storage))
-    , M_positive(other.M_positive)
-    { }
-
-    // destructor
-    ~BigInteger() = default;
-
-    /// assignment operator overload
-    // Assigns the BigInteger from a 64-bit integer.
-    self_reference operator=(int64_t integer)
+    /**
+     * @brief Bigint integer assignment operator.
+     * @param integer A 64-bit integer used to assign current bigint.
+     */
+    bigint& operator=(int64_t integer)
     {
-        return M_from_integer(integer);
+        return this->M_assign(integer);
     }
 
-    /// operator=(const std::string&)
-    ///   Assigns the BigInteger from a string;
-    /// operator=(const char* cstr)
-    ///   Assigns the BigInteger from a C-style string.
-    /// Defaults to decimal radix; for non-decimal, use
-    /// the corresponding constructor.
-    self_reference operator=(const std::string& str)
+    /**
+     * @brief Bigint string assignment operator.
+     * @param str A string used to assign current bigint.
+     */
+    bigint& operator=(const std::string& str)
     {
-        return M_from_string(str);
+        std::string normalized = numeric_type::S_normalize(str, M_positive);
+        return this->M_assign(normalized);
     }
 
-    template <typename Cstr
-            , typename = typename std::enable_if
-        <std::is_same<Cstr, const char*>::value>::type>
-    self_reference operator=(Cstr cstr)
+    /**
+     * @brief Bigint C-string assignment operator.
+     * @param str A C-string used to assign current bigint.
+     */
+    template <typename _Cstr, typename = typename std::enable_if
+             <std::is_same<_Cstr, const char*>::value>::type>
+    bigint& operator=(_Cstr cstr)
     {
-        return M_from_string(cstr);
+        return this->operator=(std::string(cstr));
     }
 
-    self_reference operator=(const_self_reference other)
-    {
-        if (this != &other)
-        {
-            M_storage = other.M_storage;
-            M_positive = other.M_positive;
-        }
-        return *this;
-    }
+    /// Bigint assignment operator.
+    bigint& operator=(const bigint&) = default;
+    /// Bigint move assignment operator.
+    bigint& operator=(bigint&&) noexcept = default;
 
-    self_reference operator=(r_self_reference other) noexcept
-    {
-        if (this != &other)
-        {
-            M_storage = std::move(other.M_storage);
-            M_positive = other.M_positive;
-        }
-        return *this;
-    }
-
-    /* public functions accessible externally */
     /// the four basic arithmetic operations
     /// addition
     /**
-     * @brief Returns the sum of two BigIntegers.
-     * @param lhs The left-hand side BigInteger.
-     * @param rhs The right-hand side BigInteger.
-     * @return A new BigInteger representing the sum.
+     * @brief Returns the sum of two bigints.
+     * @param lhs The left-hand side bigint.
+     * @param rhs The right-hand side bigint.
+     * @return A new bigint representing the sum.
      */
-    friend self_type
-    operator+(const_self_reference lhs, const_self_reference rhs)
+    friend bigint operator+(const bigint& lhs, const bigint& rhs)
     {
         if (lhs.M_positive == rhs.M_positive)
         {
-            self_type r = lhs;
+            bigint r = lhs;
             r.M_add_abs(rhs);
             return r;
         }
         int cmp = lhs.M_compare_abs(rhs);
         if (cmp == 0)
-            return static_cast<self_type>(0);
+            return static_cast<bigint>(0);
         if (cmp > 0)
         {
-            self_type r = lhs;
+            bigint r = lhs;
             r.M_subtract_abs(rhs);
             return r;
         }
-        self_type r = rhs;
+        bigint r = rhs;
         r.M_subtract_abs(lhs);
         return r;
     }
 
     /**
-     * @brief Adds another BigInteger to this one.
-     * @param integer The BigInteger to add.
-     * @return Reference to this BigInteger after addition.
+     * @brief Adds another bigint to this one.
+     * @param integer The bigint to add.
+     * @return Reference to this bigint after addition.
      */
-    self_reference operator+=(const_self_reference integer)
+    bigint& operator+=(const bigint& integer)
     {
         *this = *this + integer;
         return *this;
@@ -393,41 +511,41 @@ public:
 
     /// subtraction
     /**
-     * @brief Returns the difference between two BigIntegers.
-     * @param lhs The left-hand side BigInteger.
-     * @param rhs The right-hand side BigInteger.
-     * @return A new BigInteger representing the difference.
+     * @brief Returns the difference between two bigints.
+     * @param lhs The left-hand side bigint.
+     * @param rhs The right-hand side bigint.
+     * @return A new bigint representing the difference.
      */
-    friend self_type
-    operator-(const_self_reference lhs, const_self_reference rhs)
+    friend bigint
+    operator-(const bigint& lhs, const bigint& rhs)
     {
         if (lhs.M_positive != rhs.M_positive)
         {
-            self_type r = lhs;
+            bigint r = lhs;
             r.M_add_abs(rhs);
             return r;
         }
         int cmp = lhs.M_compare_abs(rhs);
         if (cmp == 0)
-            return static_cast<self_type>(0);
+            return static_cast<bigint>(0);
         if (cmp > 0)
         {
-            self_type r = lhs;
+            bigint r = lhs;
             r.M_subtract_abs(rhs);
             return r;
         }
-        self_type r = rhs;
+        bigint r = rhs;
         r.M_subtract_abs(lhs);
         r.M_positive = !r.M_positive;
         return r;
     }
 
     /**
-     * @brief Subtracts another BigInteger from this one.
-     * @param integer The BigInteger to subtract.
-     * @return Reference to this BigInteger after subtraction.
+     * @brief Subtracts another bigint from this one.
+     * @param integer The bigint to subtract.
+     * @return Reference to this bigint after subtraction.
      */
-    self_reference operator-=(const_self_reference integer)
+    bigint& operator-=(const bigint& integer)
     {
         *this = *this - integer;
         return *this;
@@ -435,15 +553,15 @@ public:
 
     /// multiplication
     /**
-     * @brief Returns the product of two BigIntegers.
-     * @param lhs The left-hand side BigInteger.
-     * @param rhs The right-hand side BigInteger.
-     * @return A new BigInteger representing the product.
+     * @brief Returns the product of two bigints.
+     * @param lhs The left-hand side bigint.
+     * @param rhs The right-hand side bigint.
+     * @return A new bigint representing the product.
      */
-    friend self_type
-    operator*(const_self_reference lhs, const_self_reference rhs)
+    friend bigint
+    operator*(const bigint& lhs, const bigint& rhs)
     {
-        self_type r = S_multiply_abs(lhs, rhs);
+        bigint r = S_multiply_abs(lhs, rhs);
         r.M_positive = !(lhs.M_positive ^ rhs.M_positive);
         if (r.M_zero())
             r.M_positive = true;
@@ -451,11 +569,11 @@ public:
     }
 
     /**
-     * @brief Multiplies this BigInteger by another.
-     * @param integer The BigInteger to multiply with.
-     * @return Reference to this BigInteger after multiplication.
+     * @brief Multiplies this bigint by another.
+     * @param integer The bigint to multiply with.
+     * @return Reference to this bigint after multiplication.
      */
-    self_reference operator*=(const_self_reference integer)
+    bigint& operator*=(const bigint& integer)
     {
         *this = *this * integer;
         return *this;
@@ -463,23 +581,23 @@ public:
 
     /// division
     /**
-     * @brief Returns the quotient of two BigIntegers.
-     * @param lhs The dividend BigInteger.
-     * @param rhs The divisor BigInteger.
-     * @return A new BigInteger representing the quotient.
+     * @brief Returns the quotient of two bigints.
+     * @param lhs The dividend bigint.
+     * @param rhs The divisor bigint.
+     * @return A new bigint representing the quotient.
      */
-    friend self_type
-    operator/(const_self_reference lhs, const_self_reference rhs)
+    friend bigint
+    operator/(const bigint& lhs, const bigint& rhs)
     {
         return S_divmod(lhs, rhs).first;
     }
 
     /**
-     * @brief Divides this BigInteger by another.
-     * @param integer The BigInteger to divide by.
-     * @return Reference to this BigInteger after division.
+     * @brief Divides this bigint by another.
+     * @param integer The bigint to divide by.
+     * @return Reference to this bigint after division.
      */
-    self_reference operator/=(const_self_reference integer)
+    bigint& operator/=(const bigint& integer)
     {
         *this = *this / integer;
         return *this;
@@ -487,23 +605,23 @@ public:
 
     /// modulo
     /**
-     * @brief Returns the remainder of division between two BigIntegers.
-     * @param lhs The dividend BigInteger.
-     * @param rhs The divisor BigInteger.
-     * @return A new BigInteger representing the remainder.
+     * @brief Returns the remainder of division between two bigints.
+     * @param lhs The dividend bigint.
+     * @param rhs The divisor bigint.
+     * @return A new bigint representing the remainder.
      */
-    friend self_type
-    operator%(const_self_reference lhs, const_self_reference rhs)
+    friend bigint
+    operator%(const bigint& lhs, const bigint& rhs)
     {
         return S_divmod(lhs, rhs).second;
     }
 
     /**
-     * @brief Computes the remainder of this BigInteger divided by another.
-     * @param integer The BigInteger to divide by.
-     * @return Reference to this BigInteger after modulo operation.
+     * @brief Computes the remainder of this bigint divided by another.
+     * @param integer The bigint to divide by.
+     * @return Reference to this bigint after modulo operation.
      */
-    self_reference operator%=(const_self_reference integer)
+    bigint& operator%=(const bigint& integer)
     {
         *this = *this % integer;
         return *this;
@@ -511,46 +629,46 @@ public:
 
     /// increment and decrement operators
     /**
-     * @brief Pre-increments this BigInteger by 1.
-     * @return Reference to this BigInteger after increment.
+     * @brief Pre-increments this bigint by 1.
+     * @return Reference to this bigint after increment.
      */
-    self_reference operator++()
+    bigint& operator++()
     {
-        *this += static_cast<self_type>(1);
+        *this += static_cast<bigint>(1);
         return *this;
     }
 
     /**
-     * @brief Post-increments this BigInteger by 1.
+     * @brief Post-increments this bigint by 1.
      * @param int Dummy parameter to distinguish post-increment.
-     * @return A copy of the BigInteger before increment.
+     * @return A copy of the bigint before increment.
      */
-    self_type operator++(int)
+    bigint operator++(int)
     {
-        self_type r = *this;
-        *this += static_cast<self_type>(1);
+        bigint r = *this;
+        *this += static_cast<bigint>(1);
         return r;
     }
 
     /**
-     * @brief Pre-decrements this BigInteger by 1.
-     * @return Reference to this BigInteger after decrement.
+     * @brief Pre-decrements this bigint by 1.
+     * @return Reference to this bigint after decrement.
      */
-    self_reference operator--()
+    bigint& operator--()
     {
-        *this -= static_cast<self_type>(1);
+        *this -= static_cast<bigint>(1);
         return *this;
     }
 
     /**
-     * @brief Post-decrements this BigInteger by 1.
+     * @brief Post-decrements this bigint by 1.
      * @param int Dummy parameter to distinguish post-decrement.
-     * @return A copy of the BigInteger before decrement.
+     * @return A copy of the bigint before decrement.
      */
-    self_type operator--(int)
+    bigint operator--(int)
     {
-        self_type r = *this;
-        *this -= static_cast<self_type>(1);
+        bigint r = *this;
+        *this -= static_cast<bigint>(1);
         return r;
     }
 
@@ -560,7 +678,7 @@ public:
      * @return true if lhs < rhs, otherwise false.
      */
     friend bool
-    operator<(const_self_reference lhs, const_self_reference rhs)
+    operator<(const bigint& lhs, const bigint& rhs)
     {
         if (lhs.M_positive != rhs.M_positive)
             return rhs.M_positive;
@@ -573,7 +691,7 @@ public:
      * @return true if lhs <= rhs, otherwise false.
      */
     friend bool
-    operator<=(const_self_reference lhs, const_self_reference rhs)
+    operator<=(const bigint& lhs, const bigint& rhs)
     {
         return !(rhs < lhs);
     }
@@ -583,7 +701,7 @@ public:
      * @return true if lhs > rhs, otherwise false.
      */
     friend bool
-    operator>(const_self_reference lhs, const_self_reference rhs)
+    operator>(const bigint& lhs, const bigint& rhs)
     {
         return rhs < lhs;
     }
@@ -593,7 +711,7 @@ public:
      * @return true if lhs >= rhs, otherwise false.
      */
     friend bool
-    operator>=(const_self_reference lhs, const_self_reference rhs)
+    operator>=(const bigint& lhs, const bigint& rhs)
     {
         return !(lhs < rhs);
     }
@@ -603,7 +721,7 @@ public:
      * @return true if lhs == rhs, otherwise false.
      */
     friend bool
-    operator==(const_self_reference lhs, const_self_reference rhs)
+    operator==(const bigint& lhs, const bigint& rhs)
     {
         return (lhs.M_positive == rhs.M_positive
              && lhs.M_storage == rhs.M_storage);
@@ -614,37 +732,39 @@ public:
      * @return true if lhs != rhs, otherwise false.
      */
     friend bool
-    operator!=(const_self_reference lhs, const_self_reference rhs)
+    operator!=(const bigint& lhs, const bigint& rhs)
     {
         return !(lhs == rhs);
     }
 
     /// stream IO
     /**
-     * @brief Reads a BigInteger from a stream.
+     * @brief Reads a bigint from a stream.
      */
     friend std::istream&
-    operator>>(std::istream& is, self_reference integer)
+    operator>>(std::istream& is, bigint& integer)
     {
-        std::string s{};
-        if (!(is >> s))
+        std::string str{};
+        if (!(is >> str))
             return is;
-        integer.M_from_string(s);
+        str = numeric_type::S_normalize(str, integer.M_positive);
+        integer.M_assign(str);
         return is;
     }
 
     /**
-     * @brief Outputs the BigInteger to a stream.
+     * @brief Outputs the bigint to a stream.
      */
     friend std::ostream&
-    operator<<(std::ostream& os, const_self_reference integer)
+    operator<<(std::ostream& os, const bigint& integer)
     {
         os << integer.to_string();
         return os;
     }
 
+    /// other public methods
     /**
-     * @brief Converts to true if the BigInteger
+     * @brief Converts to true if the bigint
      * is non-zero, otherwise false.
      */
     explicit operator bool() const noexcept
@@ -653,30 +773,30 @@ public:
     }
 
     /**
-     * @brief Returns the negation of this BigInteger.
-     * @return A new BigInteger with the opposite sign.
+     * @brief Returns the negation of this bigint.
+     * @return A new bigint with the opposite sign.
      */
-    self_type operator-() const
+    bigint operator-() const
     {
-        self_type r = *this;
+        bigint r = *this;
         if (r.M_zero())
             r.M_positive = !r.M_positive;
         return r;
     }
 
     /**
-     * @brief Returns the absolute value of this BigInteger.
-     * @return A new BigInteger representing the absolute value.
+     * @brief Returns the absolute value of this bigint.
+     * @return A new bigint representing the absolute value.
      */
-    self_type abs() const
+    bigint abs() const
     {
-        self_type r = *this;
+        bigint r = *this;
         r.M_positive = true;
         return r;
     }
 
     /**
-     * @brief Returns the sign of the BigInteger.
+     * @brief Returns the sign of the bigint.
      * @return 1 if positive, -1 if negative, 0 if zero.
      */
     int sign() const
@@ -687,8 +807,8 @@ public:
     }
 
     /**
-     * @brief Converts the BigInteger to its string representation.
-     * @return A string representing the value of the BigInteger.
+     * @brief Converts the bigint to its string representation.
+     * @return A string representing the value of the bigint.
      */
     std::string to_string() const
     {
@@ -706,14 +826,7 @@ public:
     }
 
 private:
-    /**
-     * @brief Removes unnecessary leading zeros from the BigInteger.
-     *
-     * After arithmetic operations (addition, subtraction, multiplication
-     * , etc.), the highest digits may become zero without affecting the
-     * actual value. This function trims those unnecessary leading zeros
-     * to maintain a normalized state.
-     */
+    /// Removes unnecessary leading zeros from the bigint.
     void M_trim() noexcept
     {
         while (!M_storage.empty() && M_storage.back() == 0)
@@ -722,23 +835,16 @@ private:
             M_positive = true;
     }
 
-    /**
-     * @brief Resets the BigInteger to zero.
-     *
-     * Clears all internal data and sets the value to 0.
-     */
+    /// Resets the bigint to zero.
+    /// Clears all internal data and sets the value to 0.
     void M_reset() noexcept
     {
         M_storage.clear();
         M_positive = true;
     }
 
-    /**
-     * @brief Initializes the BigInteger from a 64-bit integer.
-     * @param integer The 64-bit integer to convert.
-     * @return Reference to the current BigInteger.
-     */
-    self_reference M_from_integer(int64_t integer)
+    /// Assigns the value of a 64-bit integer to this bigint.
+    bigint& M_assign(int64_t integer)
     {
         M_reset();
         if (integer < 0)
@@ -755,36 +861,25 @@ private:
         return *this;
     }
 
-    /**
-     * @brief Initializes the BigInteger from a string representation.
-     *
-     * Parses the input string and sets the BigInteger value accordingly.
-     *
-     * @param str The string containing the numeric value.
-     * @return Reference to the current BigInteger.
-     */
-    self_reference M_from_string(const std::string& str)
+    /// Assigns the value of a string to this bigint.
+    /// @note Ensure str is normalized before calling this function.
+    bigint& M_assign(const std::string& str)
     {
         M_reset();
-        size_t pos{0}, n = str.size();
-        for (; pos < n && isspace((unsigned char)str[pos]); ++pos);
-        if (pos < n && (str[pos] == '+' || str[pos] == '-'))
-        {
-            M_positive = (str[pos] == '+');
-            ++pos;
-        }
-        for (ptrdiff_t i{static_cast<ptrdiff_t>(n) - 1};
-             i >= static_cast<ptrdiff_t>(pos);
-             i -= static_cast<ptrdiff_t>(SIZE))
+        std::string::size_type n = str.size();
+        using diff_t = std::string::difference_type;
+        for (diff_t i{static_cast<diff_t>(n) - 1};
+             i >= 0; i -= static_cast<diff_t>(SIZE))
         {
             value_type x = 0;
             // size_t l = std::max(pos, i - SIZE + 1);
-            ptrdiff_t l = std::max((ptrdiff_t)pos, i - (ptrdiff_t)SIZE + 1);
-            for (ptrdiff_t j = l; j <= i; ++j)
+            diff_t l = std::max((diff_t)0, i - (diff_t)SIZE + 1);
+            for (diff_t j = l; j <= i; ++j)
             {
-                if (!isdigit((unsigned char)str[j]))
+                char c = str[j];
+                if (!isdigit((unsigned char)c))
                     throw std::invalid_argument("Invalid digit");
-                x = x * RADIX + (str[j] - '0');
+                x = x * RADIX + (c - '0');
             }
             M_storage.push_back(x);
         }
@@ -792,13 +887,10 @@ private:
         return *this;
     }
 
-    /**
-     * @brief Compares the absolute value of this BigInteger with another.
-     * @param other The BigInteger to compare with.
-     * @return A positive value if |this| > |other|, zero if
-     * |this| == |other|, or a negative value if |this| < |other|.
-     */
-    int M_compare_abs(const_self_reference other) const
+    /// Compares the absolute value of this bigint with another.
+    /// @return A positive value if |this| > |other|, zero if
+    /// |this| == |other|, or a negative value if |this| < |other|.
+    int M_compare_abs(const bigint& other) const
     {
         if (M_storage.size() != other.M_storage.size())
             return (M_storage.size() < other.M_storage.size() ? -1 : 1);
@@ -810,11 +902,8 @@ private:
         return 0;
     }
 
-    /**
-     * @brief Adds another BigInteger's absolute value to this one.
-     * @param other The BigInteger whose absolute value will be added.
-     */
-    void M_add_abs(const_self_reference other)
+    /// Adds the absolute value of another bigint to this one.
+    void M_add_abs(const bigint& other)
     {
         uwide_type carry{0};
         size_type n = std::max(M_storage.size(), other.M_storage.size());
@@ -831,11 +920,8 @@ private:
             M_storage.push_back(static_cast<value_type>(carry));
     }
 
-    /**
-     * @brief Subtracts another BigInteger's absolute value from this one.
-     * @param other The BigInteger whose absolute value will be subtracted.
-     */
-    void M_subtract_abs(const_self_reference other)
+    /// Subtracts the absolute value of another bigint from this one.
+    void M_subtract_abs(const bigint& other)
     {
         wide_type carry{0};
         for (size_type i{0}; i < other.M_storage.size() || carry; ++i)
@@ -855,65 +941,57 @@ private:
         M_trim();
     }
 
-    /**
-     * @brief Returns the product of the absolute values of two BigIntegers.
-     * @param lhs The first BigInteger.
-     * @param rhs The second BigInteger.
-     * @return A BigInteger representing |lhs| * |rhs|.
-     */
-    static self_type
-    S_multiply_abs(const_self_reference lhs, const_self_reference rhs)
+    /// Returns the product of the absolute values of two bigints.
+    static bigint
+    S_multiply_abs(const bigint& lhs, const bigint& rhs)
     {
         if (lhs.M_zero() || rhs.M_zero())
-            return self_type(0);
-        self_type ret{};
-        ret.M_storage.assign(lhs.M_storage.size() + rhs.M_storage.size(), 0);
+            return bigint(0);
+        bigint product{};
+        product.M_storage.assign(lhs.M_storage.size() + rhs.M_storage.size(), 0);
         for (size_type i{0}; i < lhs.M_storage.size(); ++i)
         {
             uwide_type carry{0};
             uwide_type xi = static_cast<uwide_type>(lhs.M_storage[i]);
             for (size_type j{0}; j < rhs.M_storage.size() || carry; ++j)
             {
-                uwide_type curr = carry + ret.M_storage[i + j]
+                uwide_type curr = carry + product.M_storage[i + j]
                     + xi * (j < rhs.M_storage.size()
                     ? uwide_type(rhs.M_storage[j]) : 0);
-                ret.M_storage[i + j] = static_cast<value_type>(curr % BASE);
+                product.M_storage[i + j] = static_cast<value_type>(curr % BASE);
                 carry = curr / BASE;
             }
         }
-        ret.M_trim();
-        return ret;
+        product.M_trim();
+        return product;
     }
 
-    /**
-     * @brief Divides two BigIntegers and returns both quotient and remainder.
-     * @param dividend The number to be divided.
-     * @param divisor The number to divide by.
-     * @return A pair containing {quotient, remainder}.
-     */
-    static std::pair<self_type, self_type>
-    S_divmod(const_self_reference dividend, const_self_reference divisor)
+    /// Divides two bigints and returns both quotient and remainder.
+    /// @return A pair containing {quotient, remainder}.
+    static std::pair<bigint, bigint>
+    S_divmod(const bigint& dividend, const bigint& divisor)
     {
         if (divisor.M_zero())
             throw std::runtime_error("Division by zero");
-        self_type a = dividend.abs();
-        self_type b = divisor.abs();
+        bigint a = dividend.abs();
+        bigint b = divisor.abs();
         if (a.M_compare_abs(b) < 0)
         {
-            return {self_type(0), dividend};
+            return {bigint(0), dividend};
         }
         size_t n = a.M_storage.size();
         size_t m = b.M_storage.size();
         // normalize
         uwide_type norm = uwide_type(BASE) / (b.M_storage.back() + 1);
-        self_type an = a * self_type((wide_type)norm);
-        self_type bn = b * self_type((wide_type)norm);
+        bigint an = a * bigint((wide_type)norm);
+        bigint bn = b * bigint((wide_type)norm);
         an.M_storage.resize(n + 1, 0);
 
-        self_type q{};
+        bigint q{};
         q.M_storage.assign(n - m + 1, 0);
 
-        for (size_type i{n - m}; i >= 0; --i)
+        using diff_t = difference_type;
+        for (diff_t i = static_cast<diff_t>(n - m); i >= 0; --i)
         {
             uwide_type ai_m = uwide_type(an.M_storage[i + m]) * BASE
                             + uwide_type(an.M_storage[i + m - 1]);
@@ -923,7 +1001,7 @@ private:
 
             // multiply bn by qt and subtract from an shifted at i
             uwide_type carry = 0, borrow = 0;
-            for (size_t j = 0; j < m || carry; ++j)
+            for (diff_t j = 0; j < m || carry; ++j)
             {
                 uwide_type prod = qt * (j < m
                             ? uwide_type(bn.M_storage[j]) : 0) + carry;
@@ -956,7 +1034,7 @@ private:
         }
         q.M_trim();
         // remainder: an / norm
-        self_type r{};
+        bigint r{};
         r.M_storage.assign(an.M_storage.begin(), an.M_storage.begin() + m);
         // convert remainder back by dividing by norm
         // uwide_type carry = 0;
@@ -982,23 +1060,23 @@ private:
         return std::make_pair(q, r);
     }
 
-    /**
-     * @brief Checks if the BigInteger is zero.
-     * @return true if the value is zero, false otherwise.
-     */
+    /// Checks if the bigint is zero.
+    /// @return true if the bigint is zero, false otherwise.
     bool M_zero() const
     {
         return M_storage.empty();
     }
 
-    Storage M_storage{};
+private:
+    container_type M_storage{};
     bool M_positive{true};
 };
 
-// The storage policy defaults to std::vector<uint32_t>,
-// and the numeric policy defaults to Decimal.
-using bigint_t = BigInteger<std::vector<uint32_t>, Decimal>;
+// default: 32-bit block (fits BASE under 2^32), container std::vector
+typedef Storage<uint32_t, std::vector<uint32_t>> DefaultStorage;
+using bigint_t = bigint<DefaultStorage, Decimal>;
 
 } // namespace torelis
 
+// alias in global namespace for convenience
 using bigint = torelis::bigint_t;
