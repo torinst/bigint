@@ -59,16 +59,15 @@ void __throw_fmt(const char* file, int line, const char* fmt, ...)
     }
 
     // full length
-    int x = std::snprintf(nullptr, 0, "in %s: \'", file);
-    int y = std::snprintf(nullptr, 0, "\' at line %d", line);
-    int total = x + size + y;
+    int prefix = std::snprintf(nullptr, 0, "%s[at line %d]: ", file, line);
+    int total = prefix + size;
 
     // Creates a buffer and write formatted string
     std::vector<char> buf(total + 1);
-    int offset = std::snprintf(buf.data(), buf.size(), "in %s: \'", file);
+    int offset = std::snprintf(buf.data(),
+        buf.size(), "%s[at line %d]: ", file, line);
     std::vsnprintf(buf.data() + offset, buf.size() - offset, fmt, args);
     va_end(args);
-    std::snprintf(buf.data() + total - y, y + 1, "\' at line %d", line);
 
     throw _Type(buf.data());
 }
@@ -77,6 +76,25 @@ void __throw_fmt(const char* file, int line, const char* fmt, ...)
     __throw_fmt<>(__FILE__, __LINE__, fmt, ##__VA_ARGS__)
 #define throw_fmt_t(type, fmt, ...)  \
     __throw_fmt<type>(__FILE__, __LINE__, fmt, ##__VA_ARGS__)
+// each exception has its own macro for convenient invocation
+#define throw_logic_error_fmt(fmt, ...)          \
+  __throw_fmt<std::logic_error>(__FILE__, __LINE__, fmt, ##__VA_ARGS__)
+#define throw_domain_error_fmt(fmt, ...)          \
+  __throw_fmt<std::domain_error>(__FILE__, __LINE__, fmt, ##__VA_ARGS__)
+#define throw_invalid_argument_fmt(fmt, ...)          \
+  __throw_fmt<std::invalid_argument>(__FILE__, __LINE__, fmt, ##__VA_ARGS__)
+#define throw_length_error_fmt(fmt, ...)          \
+  __throw_fmt<std::length_error>(__FILE__, __LINE__, fmt, ##__VA_ARGS__)
+#define throw_out_of_range_fmt(fmt, ...)          \
+  __throw_fmt<std::out_of_range>(__FILE__, __LINE__, fmt, ##__VA_ARGS__)
+#define throw_runtime_error_fmt(fmt, ...)          \
+  __throw_fmt<std::runtime_error>(__FILE__, __LINE__, fmt, ##__VA_ARGS__)
+#define throw_range_error_fmt(fmt, ...)          \
+  __throw_fmt<std::range_error>(__FILE__, __LINE__, fmt, ##__VA_ARGS__)
+#define throw_overflow_error_fmt(fmt, ...)          \
+  __throw_fmt<std::overflow_error>(__FILE__, __LINE__, fmt, ##__VA_ARGS__)
+#define throw_underflow_error_fmt(fmt, ...)          \
+  __throw_fmt<std::underflow_error>(__FILE__, __LINE__, fmt, ##__VA_ARGS__)
 
 /**
  * @brief This struct defines how digits of a bigint are represented and
@@ -197,8 +215,12 @@ struct Numeric
     static std::string
     S_radix_convert(const std::string& str, radix_type from, radix_type to)
     {
-        if ((from < 2 || from > 36) || (to < 2 || to > 36))
-            throw std::invalid_argument("Radix must in [2, 36]");
+        if (from < 2 || from > 36)
+            throw_invalid_argument_fmt("Radix 'from'"
+                  " must in [2, 36], which is %hu", from);
+        if (to < 2 || to > 36)
+            throw_invalid_argument_fmt("Radix 'to'"
+                  " must in [2, 36], which is %hu", to);
         std::string tmp{S_from_radix(str, from)};
         return S_to_radix(tmp, to);
     }
@@ -215,7 +237,8 @@ private:
             uc = static_cast<uint8_t>(std::toupper(uc));
             return uc - 'A' + 10;
         }
-        throw_fmt("Must be 0-9, a-z, or A-Z (which is '%c')", uc);
+        throw_invalid_argument_fmt("Must be"
+              " 0-9, a-z, or A-Z (which is '%c')", c);
     }
 
     // Returns the character for an index in the sequence [0-9A-Z].
@@ -225,7 +248,7 @@ private:
             return static_cast<char>('0' + digit);
         if (10 <= digit && digit <= 35)
             return static_cast<char>('A' + (digit - 10));
-        throw std::invalid_argument("Must in [0, 35]");
+        throw_invalid_argument_fmt("Must in [0, 35] (which is %d)", digit);
     }
 
     // Performs on a decimal string: ret = str * radix + digit
