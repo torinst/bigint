@@ -225,7 +225,28 @@ struct Numeric
         return S_to_radix(tmp, to);
     }
 
+    /// @brief The characters allowed in a number for a given radix.
+    static std::string
+    S_allowed_chars(radix_type radix)
+    {
+        if (!S_check_radix(radix))
+            return {};
+        std::string ret{};
+        for (int i = 0; i < radix; ++i)
+        {
+            ret.push_back(S_tochar(i));
+        }
+        return ret;
+    }
+
 private:
+    // Returns true if `radix >= l && radix <= r`, false otherwise.
+    static bool
+    S_check_radix(radix_type radix, radix_type l = 2, radix_type r = 36)
+    {
+        return radix >= l && radix <= r;
+    }
+
     // Returns the index of a character in the sequence [0-9A-Z].
     static int S_todigit(char c)
     {
@@ -897,11 +918,15 @@ private:
             value_type x = 0;
             // size_t l = std::max(pos, i - SIZE + 1);
             diff_t l = std::max((diff_t)0, i - (diff_t)SIZE + 1);
+            std::string allowed_chars = numeric_type::S_allowed_chars(RADIX);
             for (diff_t j = l; j <= i; ++j)
             {
                 char c = str[j];
-                if (!isdigit((unsigned char)c))
-                    throw std::invalid_argument("Invalid digit");
+                if (allowed_chars.find(c) == std::string::npos)
+                    throw_invalid_argument_fmt("Allowed characters "
+                          "are %s (case-insensitive), "
+                          "which is %c",
+                        allowed_chars.c_str(), c);
                 x = x * RADIX + (c - '0');
             }
             M_storage.push_back(x);
