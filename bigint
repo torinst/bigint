@@ -76,25 +76,11 @@ void __throw_fmt(const char* file, int line, const char* fmt, ...)
     __throw_fmt<>(__FILE__, __LINE__, fmt, ##__VA_ARGS__)
 #define throw_fmt_t(type, fmt, ...)  \
     __throw_fmt<type>(__FILE__, __LINE__, fmt, ##__VA_ARGS__)
-// each exception has its own macro for convenient invocation
-#define throw_logic_error_fmt(fmt, ...)          \
-  __throw_fmt<std::logic_error>(__FILE__, __LINE__, fmt, ##__VA_ARGS__)
+// for convenient invocation
 #define throw_domain_error_fmt(fmt, ...)          \
   __throw_fmt<std::domain_error>(__FILE__, __LINE__, fmt, ##__VA_ARGS__)
 #define throw_invalid_argument_fmt(fmt, ...)          \
   __throw_fmt<std::invalid_argument>(__FILE__, __LINE__, fmt, ##__VA_ARGS__)
-#define throw_length_error_fmt(fmt, ...)          \
-  __throw_fmt<std::length_error>(__FILE__, __LINE__, fmt, ##__VA_ARGS__)
-#define throw_out_of_range_fmt(fmt, ...)          \
-  __throw_fmt<std::out_of_range>(__FILE__, __LINE__, fmt, ##__VA_ARGS__)
-#define throw_runtime_error_fmt(fmt, ...)          \
-  __throw_fmt<std::runtime_error>(__FILE__, __LINE__, fmt, ##__VA_ARGS__)
-#define throw_range_error_fmt(fmt, ...)          \
-  __throw_fmt<std::range_error>(__FILE__, __LINE__, fmt, ##__VA_ARGS__)
-#define throw_overflow_error_fmt(fmt, ...)          \
-  __throw_fmt<std::overflow_error>(__FILE__, __LINE__, fmt, ##__VA_ARGS__)
-#define throw_underflow_error_fmt(fmt, ...)          \
-  __throw_fmt<std::underflow_error>(__FILE__, __LINE__, fmt, ##__VA_ARGS__)
 
 /**
  * @brief This struct defines how digits of a bigint are represented and
