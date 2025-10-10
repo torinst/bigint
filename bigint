@@ -215,10 +215,10 @@ struct Numeric
     static std::string
     S_radix_convert(const std::string& str, radix_type from, radix_type to)
     {
-        if (from < 2 || from > 36)
+        if (!S_check_radix(from))
             throw_invalid_argument_fmt("Radix 'from'"
                   " must in [2, 36], which is %hu", from);
-        if (to < 2 || to > 36)
+        if (!S_check_radix(to))
             throw_invalid_argument_fmt("Radix 'to'"
                   " must in [2, 36], which is %hu", to);
         std::string tmp{S_from_radix(str, from)};
@@ -942,7 +942,8 @@ private:
     {
         if (M_storage.size() != other.M_storage.size())
             return (M_storage.size() < other.M_storage.size() ? -1 : 1);
-        for (size_type i = M_storage.size() - 1; i >= 0; --i)
+        // for (size_type i = M_storage.size() - 1; i >= 0; --i)
+        for (difference_type i = M_storage.size() - 1; i >= 0; --i)
         {
             if (M_storage[i] != other.M_storage[i])
                 return (M_storage[i] < other.M_storage[i] ? -1 : 1);
@@ -1020,7 +1021,7 @@ private:
     S_divmod(const bigint& dividend, const bigint& divisor)
     {
         if (divisor.M_zero())
-            throw std::runtime_error("Division by zero");
+            throw_domain_error_fmt("division by zero");
         bigint a = dividend.abs();
         bigint b = divisor.abs();
         if (a.M_compare_abs(b) < 0)
@@ -1089,10 +1090,10 @@ private:
         r.M_storage.resize(an.M_storage.size()); // ensure enough size
         r.M_storage.assign(an.M_storage.begin(), an.M_storage.begin() + m);
         uwide_type remcarry = 0;
-        for (int i = int(r.M_storage.size()) - 1; i >= 0; --i)
+        for (auto it = r.M_storage.rbegin(); it != r.M_storage.rend(); ++it)
         {
-            uwide_type cur = r.M_storage[i] + remcarry * BASE;
-            r.M_storage[i] = uint32_t(cur / norm);
+            uwide_type cur = static_cast<uwide_type>(*it) + remcarry * BASE;
+            *it = static_cast<value_type>(cur / norm);
             remcarry = cur % norm;
         }
         r.M_trim();
