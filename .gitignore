@@ -40,6 +40,5 @@
 # debug information files
 *.dwo
 
-# Local testing and output files
-bigint_test.*
-bigint_out
+# output files
+build/
