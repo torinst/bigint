@@ -1,23 +1,23 @@
 <p align="center">
   <img src="logo.png" alt="bigint logo" width="300"/>
 </p>
-<h3 align="center">C++ 任意精度整数类</h3>
+<h3 align="center">Arbitrary Precision Integer for C++</h3>
 
-[English](README_en.md) | [中文简体](README.md)
+English | [中文简体](README.zh-CN.md)
 
-一个轻量级、仅头文件的 C++ 库，提供 **任意精度整数运算**，支持与内置整数类型相似的操作与接口。
+A lightweight, header-only C++ library that provides **arbitrary precision integer arithmetic**, supporting operations and interfaces similar to built-in integer types.
 
-### 功能特性
-- ✅ 任意精度整数（不受机器字长限制）
-- ✅ 支持正数与负数
-- ✅ 算术运算符：+ - * / % ++ -- += -= *= /= %=
-- ✅ 比较运算符：== != < > <= >=
-- ✅ 支持流式输入输出（std::cout, std::cin）
-- ✅ 支持从 std::string, int64_t 等类型构造
-- ✅ 异常安全，内存管理高效
-- ✅ 无第三方依赖，仅使用标准 C++
+### Features
+- ✅ Arbitrary precision integers (no bit-width limit)
+- ✅ Supports both positive and negative numbers
+- ✅ Arithmetic operators: `+ - * / % ++ -- += -= *= /= %=`
+- ✅ Comparison operators: `== != < > <= >=`
+- ✅ Stream I/O support (`std::cout`, `std::cin`)
+- ✅ Supports construction from types such as `std::string`, `int64_t`, etc.
+- ✅ Exception-safe, efficient memory management
+- ✅ No third-party dependencies — standard C++ only
 
-### 快速开始
+### Quick Start
 ```cpp
 #include "bigint"
 #include <iostream>
@@ -45,7 +45,7 @@ int main()
 }
 ```
 
-#### 输出结果：
+#### Output:
 ```cpp
 a + b = 1111111110111111111011111111100
 a * b = 121932631137021795226185032733622923332237463801111263526900
@@ -55,65 +55,65 @@ c = 4294967296
 a == c
 ```
 
-### 使用方式
+### Usage
 ```bash
-# 克隆代码到本地
+# Clone the code to your local machine
 git clone https://github.com/torelis/bigint.git
 ```
 
-#### 方式一：直接包含头文件
+#### Option 1: Direct include
 ```bash
-# 将 bigint 文件复制到您的源文件目录中
+# Copy the bigint file to your source directory
 cp bigint/bigint /path/to/your/source/directory/
 ```
 
-然后在您的代码中引入
+Then include it in your code
 ```cpp
 #include "bigint"
 ```
 
-#### 方式二：安装后引入使用
+#### Option 2：After installation, include and use it
 ```bash
-# 克隆代码后进入目录运行 install.sh 安装脚本
+# After cloning the code, navigate to the directory and run the install.sh script
 cd bigint
 ./install.sh
 
-# bigint 文件将被安装在 /usr/local/include 目录中
+# The bigint file will be installed in the /usr/local/include directory
 ```
 
-然后在您的代码中引入
+Then include it in your code
 ```cpp
 #include <bigint>
 ```
 
-**Note：** 若需卸载，运行 install.sh 脚本并使用 uninstall 参数即可
+**Note：** To uninstall, run the install.sh script with the uninstall argument
 ```bash
 ./install.sh uninstall
 ```
 
-#### 其他使用方式
-如使用 CMake 集成等，请自行研究
+#### Other Usage
+Such as integration with CMake, please explore on your own.
 
-### API 概览
-#### 1、运算符概览
-| 运算符 | 类型 | 功能说明 |
+### API Overview
+#### 1. Operator Overview
+| Operator | Type | Description |
 |:----------|:----------|:----------|
-| `+` | 算术运算 | 加法 |
-| `-` | 算术运算 | 减法 |
-| `*` | 算术运算 | 乘法 |
-| `/` | 算术运算 | 整除 |
-| `%` | 算术运算 | 取模 |
-| `+=`, `-=`, `*=`, `/=`, `%=` | 算术运算 | 复合赋值运算 |
-| `<`, `<=`, `>`, `>=`, `==`, `!=` | 比较运算 | 标准比较操作 |
-| `++` | 算术运算 | 将操作数加 1（前置/后置） |
-| `--` | 算术运算 | 将操作数减 1（前置/后置） |
-| `operator bool()` | 类型转换 | 将对象转换为 bool |
-| `operator-()` | 一元算术运算 | 对单个操作数取负值 |
-| `operator=`[^1] | 赋值运算 | 给对象赋值 |
+| `+` | Arithmetic Operator | Addition |
+| `-` | Arithmetic Operator | Subtraction |
+| `*` | Arithmetic Operator | Multiplication |
+| `/` | Arithmetic Operator | Integer division |
+| `%` | Arithmetic Operator | Modulo |
+| `+=`, `-=`, `*=`, `/=`, `%=` | Arithmetic Operator | Compound assignments |
+| `<`, `<=`, `>`, `>=`, `==`, `!=` | Comparison Operator | All standard comparisons |
+| `++` | Arithmetic Operator | Increment the operand by 1 (prefix/postfix) |
+| `--` | Arithmetic Operator | Decrement the operand by 1 (prefix/postfix) |
+| `operator bool()` | Type Conversion Operator | Convert the object to bool |
+| `operator-()` | Unary Arithmetic Operator | Negate a single operand |
+| `operator=`[^1] | Assignment Operator | Assign a value to the object |
 
-[^1]: 可以接受 `内置整数类型`、`std::string`、`const char*` 或另一个 `bigint`
+[^1]: Can take `built-in integer types`, `std::string`, `const char*`, or another `bigint`
 
-#### 2、输入输出与类型转换
+#### 2. I/O and Conversion
 ```cpp
 std::string to_string() const;
 
@@ -121,50 +121,50 @@ friend std::istream& operator>>(std::istream&, bigint&);
 friend std::ostream& operator<<(std::ostream&, const bigint&);
 ```
 
-#### 3、其他API
+#### 3. Other API
 ```cpp
-bigint abs() const;  // 返回当前操作数的绝对值
-int sign() const;    // 返回当前操作数的符号
+bigint abs() const;  // Return the absolute value of the current operand
+int sign() const;    // Return the sign of the current operand
 ```
 
-### 测试
+### Testing
 ```bash
-# 运行提供的单元测试
-# 安装 libgtest-dev 及 CMake
+# Run provided unit tests
+# install libgtest-dev and CMake
 apt install libgtest-dev cmake build-essential
 cd tests/
-# 运行测试构建脚本
+# Run the test build script
 ./build.sh
 ./build/bigint_out
 
-# 也可构建后立即运行测试代码
-# 使用 --run 或 -r 参数即可
+# Can also run the test code immediately after building
+# Simply use the --run or -r option
 ./build.sh -r
 ```
 
-### 许可证
-本项目基于 MIT License 许可协议发布。详情请参阅仓库中的 [LICENSE](LICENSE) 文件。
+### License
+This project is licensed under the MIT License — see [LICENSE](LICENSE) for details.
 
-### 贡献指南
-欢迎对本项目提出改进建议或提交代码！
+### Contributing Guide
+We welcome suggestions and code contributions to improve this project!
 
-如果你发现问题或希望新增功能，可以通过以下方式参与贡献：
+If you find any issues or would like to add new features, you can contribute by following these steps:
 ```bash
-# 1、Fork 本仓库
+# 1. Fork this repository
 
-# 2、在本地创建新分支
+# 2. Create a new branch locally
 git checkout -b feat/your-feature-name
 
-# 3、修改代码
+# 3. Modify the code
 
-# 4、提交修改
-git commit -m "描述你的修改内容"
-# 或对提交签名
-git commit -S -m "描述你的修改内容"
+# 4. Commit your changes
+git commit -m "Describe your changes"
+# or sign your commit
+git commit -S -m "Describe your changes"
 
-# 5、将修改推送到你的仓库
+# 5. Push your changes to your repository
 git push origin feat/your-feature-name
 
-# 6、发起 Pull Request（PR）到主分支
+# 6. Create a Pull Request (PR) to the main branch
 ```
-您的贡献将被认真审阅并合并，感谢支持！
+Your contribution will be carefully reviewed and merged — thank you for your support!
