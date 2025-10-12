@@ -433,13 +433,7 @@ public:
      */
     bigint(const std::string& str, radix_type radix = RADIX)
     {
-        std::string normalized = numeric_type::S_normalize(str, M_positive);
-        if (radix != RADIX)
-        {
-            normalized = numeric_type
-              ::S_radix_convert(normalized, radix, RADIX);
-        }
-        (void)(this->M_assign(normalized));
+        (void)(this->M_assign(str, radix));
     }
 
     /**
@@ -478,8 +472,7 @@ public:
      */
     bigint& operator=(const std::string& str)
     {
-        std::string normalized = numeric_type::S_normalize(str, M_positive);
-        return this->M_assign(normalized);
+        return this->M_assign(str, RADIX);
     }
 
     /**
@@ -892,11 +885,17 @@ private:
     }
 
     /// Assigns the value of a string to this bigint.
-    /// @note Ensure str is normalized before calling this function.
-    bigint& M_assign(const std::string& str)
+    bigint& M_assign(const std::string& str, radix_type radix)
     {
         M_reset();
-        std::string::size_type n = str.size();
+
+        std::string normalized = numeric_type::S_normalize(str, M_positive);
+        if (radix != RADIX)
+        {
+            normalized = numeric_type
+              ::S_radix_convert(normalized, radix, RADIX);
+        }
+        std::string::size_type n = normalized.size();
         using diff_t = std::string::difference_type;
         for (diff_t i{static_cast<diff_t>(n) - 1};
              i >= 0; i -= static_cast<diff_t>(SIZE))
@@ -907,7 +906,7 @@ private:
             std::string allowed_chars = numeric_type::S_allowed_chars(RADIX);
             for (diff_t j = l; j <= i; ++j)
             {
-                char c = str[j];
+                char c = normalized.at(j);
                 if (allowed_chars.find(c) == std::string::npos)
                     throw_invalid_argument_fmt("Allowed characters "
                           "are %s (case-insensitive), "
