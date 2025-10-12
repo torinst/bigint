@@ -132,8 +132,14 @@ int sign() const;    // 返回当前操作数的符号
 # 运行提供的单元测试
 # 安装 libgtest-dev 及 CMake
 apt install libgtest-dev cmake build-essential
+cd tests/
 # 运行测试构建脚本
 ./build.sh
+./build/bigint_out
+
+# 也可构建后立即运行测试代码
+# 使用 --run 或 -r 参数即可
+./build.sh -r
 ```
 
 ### 许可证

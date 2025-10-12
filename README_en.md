@@ -132,8 +132,14 @@ int sign() const;    // Return the sign of the current operand
 # Run provided unit tests
 # install libgtest-dev and CMake
 apt install libgtest-dev cmake build-essential
+cd tests/
 # Run the test build script
 ./build.sh
+./build/bigint_out
+
+# Can also run the test code immediately after building
+# Simply use the --run or -r option
+./build.sh -r
 ```
 
 ### License
