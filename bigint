@@ -498,6 +498,9 @@ public:
     /// Destructor
     ~bigint() = default;
 
+    bigint(nullptr_t) = delete;
+    bigint& operator=(nullptr_t) = delete;
+
     /**
      * @brief Bigint integer assignment operator.
      * @tparam _Integer The type of integer.
