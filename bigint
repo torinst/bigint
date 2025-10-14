@@ -28,6 +28,45 @@
 #include <sstream>        // for stringstream
 #include <stdexcept>
 
+#if defined(__SIZEOF_INT128__)
+// extend __int128 support
+namespace std _GLIBCXX_VISIBILITY(default)
+{
+template <>
+struct is_integral<__int128>
+  : public std::true_type { };
+
+template <>
+struct is_integral<unsigned __int128>
+  : public std::true_type { };
+
+template <>
+struct make_unsigned<__int128>
+{
+    using type = unsigned __int128;
+};
+
+template <>
+struct make_unsigned<const __int128>
+{
+    using type = const unsigned __int128;
+};
+
+template <>
+struct make_unsigned<unsigned __int128>
+{
+    using type = unsigned __int128;
+};
+
+template <>
+struct make_unsigned<const unsigned __int128>
+{
+    using type = const unsigned __int128;
+};
+
+} // namespace std
+#endif
+
 namespace torelis
 {
 
@@ -414,10 +453,14 @@ public:
     bigint() = default;
 
     /**
-     * @brief Creates a bigint from a 64-bit integer.
-     * @param integer A 64-bit integer used to create bigint.
+     * @brief Creates a bigint from an integer.
+     * @tparam _Integer The type of integer.
+     * @tparam _ SFINAE constraint for integral types.
+     * @param integer An integer used to create bigint.
      */
-    bigint(int64_t integer)
+    template <class _Integer, class = typename std::enable_if
+          <std::is_integral<_Integer>::value>::type>
+    bigint(_Integer integer)
     {
         (void)(this->M_assign(integer));
     }
@@ -444,9 +487,7 @@ public:
      * C-string version of
      * `bigint(const std::string& str, radix_type radix = RADIX)`
      */
-    template <typename _Cstr, typename = typename std::enable_if
-             <std::is_same<_Cstr, const char*>::value>::type>
-    bigint(_Cstr cstr, radix_type radix = RADIX)
+    bigint(const char* cstr, radix_type radix = RADIX)
     : bigint(std::string(cstr), radix)
     { }
 
@@ -459,9 +500,13 @@ public:
 
     /**
      * @brief Bigint integer assignment operator.
-     * @param integer A 64-bit integer used to assign current bigint.
+     * @tparam _Integer The type of integer.
+     * @tparam _ SFINAE constraint for integral types.
+     * @param integer An integer used to assign current bigint.
      */
-    bigint& operator=(int64_t integer)
+    template <class _Integer, class = typename std::enable_if
+          <std::is_integral<_Integer>::value>::type>
+    bigint& operator=(_Integer integer)
     {
         return this->M_assign(integer);
     }
@@ -479,9 +524,7 @@ public:
      * @brief Bigint C-string assignment operator.
      * @param str A C-string used to assign current bigint.
      */
-    template <typename _Cstr, typename = typename std::enable_if
-             <std::is_same<_Cstr, const char*>::value>::type>
-    bigint& operator=(_Cstr cstr)
+    bigint& operator=(const char* cstr)
     {
         return this->operator=(std::string(cstr));
     }
@@ -771,7 +814,7 @@ public:
         if (!(is >> str))
             return is;
         str = numeric_type::S_normalize(str, integer.M_positive);
-        integer.M_assign(str);
+        integer.M_assign(str, RADIX);
         return is;
     }
 
@@ -866,21 +909,36 @@ private:
         M_positive = true;
     }
 
-    /// Assigns the value of a 64-bit integer to this bigint.
-    bigint& M_assign(int64_t integer)
+    /// Assigns the value of a unsigned integer to this bigint.
+    template <typename _UInteger>
+    void M_assign_unsigned_integer(_UInteger uinteger)
     {
         M_reset();
-        if (integer < 0)
+        while (uinteger)
         {
-            M_positive = false;
-            integer = -integer;
-        }
-        while (integer)
-        {
-            value_type x = static_cast<value_type>(integer % BASE);
+            value_type x = static_cast<value_type>(uinteger % BASE);
             M_storage.push_back(x);
-            integer /= BASE;
+            uinteger /= BASE;
         }
+    }
+
+    /// Assigns the value of a integer to this bigint.
+    template <class _Integer, class = typename std::enable_if
+          <std::is_integral<_Integer>::value>::type>
+    bigint& M_assign(_Integer integer)
+    {
+        typedef typename std::make_unsigned<_Integer>::type uint_type;
+
+        if (std::is_signed<_Integer>::value)
+        {
+            M_positive = (integer > 0);
+            uint_type __x = static_cast<uint_type>(integer);
+            __x = M_positive ? __x : ~__x + 1;
+            M_assign_unsigned_integer(__x);
+            return *this;
+        }
+        uint_type __x = static_cast<uint_type>(integer);
+        M_assign_unsigned_integer(__x);
         return *this;
     }
 
