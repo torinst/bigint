@@ -58,7 +58,7 @@ a == c
 ### 使用方式
 ```bash
 # 克隆代码到本地
-git clone https://github.com/torelis/bigint.git
+git clone https://github.com/torinst/bigint.git
 ```
 
 #### 方式一：直接包含头文件

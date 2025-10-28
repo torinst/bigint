@@ -58,7 +58,7 @@ a == c
 ### Usage
 ```bash
 # Clone the code to your local machine
-git clone https://github.com/torelis/bigint.git
+git clone https://github.com/torinst/bigint.git
 ```
 
 #### Option 1: Direct include
